@@ -1,0 +1,87 @@
+/* src/styles/globals.css */
+/* Design tokens locked — match the extension exactly */
+
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  --bg:           #FAFAF8;
+  --surface:      #FFFFFF;
+  --muted:        #F2F2EF;
+  --border:       #E2E2DC;
+  --text-primary: #1A1A1A;
+  --text-secondary: #6B6B6B;
+  --text-muted:   #ADADAD;
+  --gold:         #FFCC00;
+  --blue:         #5170FF;
+  --blue-dark:    #1800AD;
+  --green:        #2DC07A;
+  --amber:        #F5941F;
+  --red:          #E83C3C;
+
+  --font-heading: 'EB Garamond', Georgia, serif;
+  --font-ui:      'Inter', system-ui, sans-serif;
+
+  --radius:       8px;
+  --radius-lg:    12px;
+  --shadow-sm:    0 1px 3px rgba(0,0,0,0.06);
+  --shadow-md:    0 4px 16px rgba(0,0,0,0.08);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-heading);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font-family: var(--font-ui);
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+input {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  outline: none;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Focus styles — keyboard accessible */
+input:focus {
+  border-color: var(--blue) !important;
+  box-shadow: 0 0 0 3px rgba(81,112,255,0.12);
+}
+
+button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(81,112,255,0.3);
+  border-radius: var(--radius);
+}
