@@ -3,9 +3,5 @@
   "buildCommand": "next build",
   "devCommand": "next dev",
   "installCommand": "npm install",
-  "outputDirectory": ".next",
-  "env": {
-    "NEXT_PUBLIC_SUPABASE_URL": "@credflow_supabase_url",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@credflow_supabase_anon_key"
-  }
+  "outputDirectory": ".next"
 }
