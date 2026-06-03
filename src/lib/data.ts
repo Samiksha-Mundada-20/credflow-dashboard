@@ -118,17 +118,27 @@ export async function saveSettings(
 // Given an array of snapshots, return one per day (the most recent per day).
 // Used to build the 7-day bar chart — we don't want multiple bars per day.
 export function onePerDay(snapshots: UsageSnapshot[]): UsageSnapshot[] {
-  const seen = new Set<string>()
-  const result: UsageSnapshot[] = []
+  const dayMap = new Map<string, UsageSnapshot>()
+
   for (const snap of snapshots) {
-    // captured_at is ISO string — take just the date part "2026-06-02"
     const day = snap.captured_at.slice(0, 10)
-    if (!seen.has(day)) {
-      seen.add(day)
-      result.push(snap)
+    const existing = dayMap.get(day)
+
+    // Prefer snapshots under 1.0 — over 1.0 are reset artifacts
+    const snapVal = snap.session_utilization
+    const existVal = existing?.session_utilization ?? -1
+
+    if (!existing) {
+      dayMap.set(day, snap)
+    } else if (snapVal <= 1.0 && snapVal > existVal) {
+      // Pick highest valid value for the day
+      dayMap.set(day, snap)
     }
   }
-  return result.slice(0, 7).reverse()  // Oldest first for the chart
+
+  return Array.from(dayMap.values())
+    .sort((a, b) => a.captured_at.localeCompare(b.captured_at))
+    .slice(-7)
 }
 
 // Seconds until a UTC ISO timestamp.
@@ -146,5 +156,5 @@ export function pct(utilization: number): string {
 
 // Convert utilization float (0.43) to integer (43)
 export function pctInt(utilization: number): number {
-  return Math.round(utilization * 100)
+  return Math.round(Math.min(utilization, 1.0) * 100)
 }
