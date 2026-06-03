@@ -56,7 +56,7 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
       .from('usage_snapshots')
       .select('*')
       .eq('user_id', userId)
-      .eq('platform', 'claude.ai')
+      .eq('platform', 'claude')
       .order('captured_at', { ascending: false })
       .limit(1),
 
@@ -66,7 +66,7 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
       .from('usage_snapshots')
       .select('*')
       .eq('user_id', userId)
-      .eq('platform', 'claude.ai')
+      .eq('platform', 'claude') 
       .gte('captured_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
       .order('captured_at', { ascending: false })
       .limit(50),   // Fetch up to 50, we'll pick one per day in the component
