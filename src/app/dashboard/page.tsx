@@ -46,7 +46,6 @@ function fmtWeeklyResets(s: number) {
     : fmtResets(s)
 }
 
-// How stale the data is — shown in the status badge
 function staleness(capturedAt: string): string {
   const secs = Math.floor((Date.now() - new Date(capturedAt).getTime()) / 1000)
   if (secs < 60)   return 'Just now'
@@ -54,13 +53,11 @@ function staleness(capturedAt: string): string {
   return `${Math.floor(secs / 3600)}h ago`
 }
 
-// Get abbreviated day label for bar chart from ISO date string
 function dayLabel(isoDate: string): string {
   const d = new Date(isoDate)
   return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]
 }
 
-// Is this ISO date string today?
 function isToday(isoDate: string): boolean {
   return isoDate.slice(0, 10) === new Date().toISOString().slice(0, 10)
 }
@@ -70,37 +67,26 @@ function isToday(isoDate: string): boolean {
 export default function DashboardPage() {
   const router = useRouter()
 
-  // Auth
-  const [user,       setUser]       = useState<User | null>(null)
-  const [authLoading, setAuthLoading] = useState(true)
-
-  // Data
-  const [data,        setData]        = useState<DashboardData | null>(null)
-  const [dataLoading, setDataLoading] = useState(true)
-  const [dataError,   setDataError]   = useState<string | null>(null)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-
-  // UI
-  const [activeTab,  setActiveTab]  = useState<Tab>('usage')
-  const [usageView,  setUsageView]  = useState<UsageView>('detail')
-  const [signingOut, setSigningOut] = useState(false)
-  const [savingSettings, setSavingSettings] = useState(false)
-  const [settingsSaved,  setSettingsSaved]  = useState(false)
-
-  // Settings local state — synced from data on load
+  const [user,         setUser]         = useState<User | null>(null)
+  const [authLoading,  setAuthLoading]  = useState(true)
+  const [data,         setData]         = useState<DashboardData | null>(null)
+  const [dataLoading,  setDataLoading]  = useState(true)
+  const [dataError,    setDataError]    = useState<string | null>(null)
+  const [activeTab,    setActiveTab]    = useState<Tab>('usage')
+  const [usageView,    setUsageView]    = useState<UsageView>('detail')
+  const [signingOut,   setSigningOut]   = useState(false)
+  const [savingSettings,  setSavingSettings]  = useState(false)
+  const [settingsSaved,   setSettingsSaved]   = useState(false)
   const [sessionThreshold, setSessionThreshold] = useState(80)
   const [weeklyThreshold,  setWeeklyThreshold]  = useState(75)
-  const [secondAlert,      setSecondAlert]      = useState(true)
-  const [reminders,        setReminders]        = useState(true)
-  const [injectedBar,      setInjectedBar]      = useState(true)
-  const [syncFreq,         setSyncFreq]         = useState(5)
+  const [secondAlert,  setSecondAlert]  = useState(true)
+  const [reminders,    setReminders]    = useState(true)
+  const [injectedBar,  setInjectedBar]  = useState(true)
+  const [syncFreq,     setSyncFreq]     = useState(5)
+  const [sessionSecs,  setSessionSecs]  = useState(0)
+  const [weeklySecs,   setWeeklySecs]   = useState(0)
+  const [staleLabel,   setStaleLabel]   = useState('')
 
-  // Live countdown timers — seeded from real reset timestamps
-  const [sessionSecs, setSessionSecs] = useState(0)
-  const [weeklySecs,  setWeeklySecs]  = useState(0)
-  const [staleLabel,  setStaleLabel]  = useState('')
-
-  // ── Session guard ────────────────────────────────────────────────────────────
   useEffect(() => {
     async function check() {
       const u = await getUser()
@@ -111,16 +97,12 @@ export default function DashboardPage() {
     check()
   }, [router])
 
-  // ── Fetch dashboard data ─────────────────────────────────────────────────────
   const fetchData = useCallback(async (userId: string) => {
     setDataLoading(true)
     setDataError(null)
     try {
       const result = await getDashboardData(userId)
       setData(result)
-      setLastUpdated(new Date())
-
-      // Seed settings from DB
       if (result.settings) {
         const s = result.settings
         setSessionThreshold(Math.round(s.session_alert_threshold * 100))
@@ -130,15 +112,13 @@ export default function DashboardPage() {
         setInjectedBar(s.injected_bar_enabled)
         setSyncFreq(s.sync_frequency_minutes)
       }
-
-      // Seed timers from real reset timestamps
       if (result.latestSnapshot) {
         const snap = result.latestSnapshot
         setSessionSecs(secsUntil(snap.session_reset_at))
         setWeeklySecs(secsUntil(snap.weekly_reset_at))
         setStaleLabel(staleness(snap.captured_at))
       }
-    } catch (e) {
+    } catch {
       setDataError('Could not load data. Check your connection.')
     } finally {
       setDataLoading(false)
@@ -149,20 +129,15 @@ export default function DashboardPage() {
     if (!authLoading && user) fetchData(user.id)
   }, [authLoading, user, fetchData])
 
-  // ── Countdown tick ────────────────────────────────────────────────────────────
   useEffect(() => {
     const t = setInterval(() => {
       setSessionSecs(s => Math.max(0, s - 1))
       setWeeklySecs(s  => Math.max(0, s - 1))
-      // Update staleness label every 30s
-      if (data?.latestSnapshot) {
-        setStaleLabel(staleness(data.latestSnapshot.captured_at))
-      }
+      if (data?.latestSnapshot) setStaleLabel(staleness(data.latestSnapshot.captured_at))
     }, 1000)
     return () => clearInterval(t)
   }, [data])
 
-  // ── Save settings ─────────────────────────────────────────────────────────────
   async function handleSaveSettings() {
     if (!user) return
     setSavingSettings(true)
@@ -190,13 +165,15 @@ export default function DashboardPage() {
   const initials = user?.email?.[0]?.toUpperCase() ?? 'U'
   const isPro    = data?.settings?.plan === 'pro'
 
-  // ── Derive chart data from snapshots ─────────────────────────────────────────
+  // ── Chart data — px heights, capped at 100 ────────────────────────────────
+  // bar.h is 0–100 integer. We render as px directly so bars scale correctly.
+  // A 100px container with px-based heights means 86 → 86px, 53 → 53px etc.
   const chartDays: Array<{ label: string; h: number; today: boolean }> = (() => {
     if (!data?.history.length) return []
     const daily = onePerDay(data.history)
     return daily.map(snap => ({
       label: isToday(snap.captured_at) ? 'Today' : dayLabel(snap.captured_at),
-      h:     pctInt(snap.session_utilization),
+      h:     Math.max(pctInt(snap.session_utilization), 3), // min 3px so bar is visible
       today: isToday(snap.captured_at),
     }))
   })()
@@ -205,24 +182,21 @@ export default function DashboardPage() {
   const sessionPct = snap ? pctInt(snap.session_utilization) : null
   const weeklyPct  = snap ? pctInt(snap.weekly_utilization)  : null
 
-  // ── Loading spinner ───────────────────────────────────────────────────────────
   if (authLoading) return (
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#FAFAF8'}}>
       <span style={{width:24,height:24,border:'2px solid #E2E2DC',borderTopColor:'#5170FF',borderRadius:'50%',display:'inline-block',animation:'spin .7s linear infinite'}}/>
     </div>
   )
 
-  // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div style={{minHeight:'100vh',background:'#FAFAF8',display:'flex',flexDirection:'column'}}>
 
-      {/* ═══════════════════════════════════ TOP NAV ══════════════════════════ */}
+      {/* TOP NAV */}
       <nav style={{background:'#FFFFFF',borderBottom:'1px solid #E2E2DC',height:54,display:'flex',alignItems:'center',padding:'0 20px',flexShrink:0}}>
         <div style={{display:'flex',alignItems:'center',gap:7,marginRight:24}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 .5L9.5 6.5 15.5 8 9.5 9.5 8 15.5 6.5 9.5.5 8 6.5 6.5Z" fill="#FFCC00"/></svg>
           <span style={{fontFamily:'var(--font-heading)',fontSize:16,fontWeight:500,color:'#1A1A1A',letterSpacing:'-0.3px'}}>CredFlow</span>
         </div>
-
         <div style={{display:'flex',flex:1}}>
           {(['usage','settings'] as Tab[]).map(t => (
             <button key={t} onClick={() => setActiveTab(t)} style={{
@@ -234,43 +208,30 @@ export default function DashboardPage() {
             }}>{t}</button>
           ))}
         </div>
-
         <div style={{display:'flex',alignItems:'center',gap:9}}>
-          {/* Refresh button */}
-          <button
-            onClick={() => user && fetchData(user.id)}
-            disabled={dataLoading}
-            title="Refresh data"
-            style={{width:28,height:28,borderRadius:8,background:'#F2F2EF',border:'none',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',opacity:dataLoading?0.5:1}}
-          >
+          <button onClick={() => user && fetchData(user.id)} disabled={dataLoading} title="Refresh" style={{width:28,height:28,borderRadius:8,background:'#F2F2EF',border:'none',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',opacity:dataLoading?0.5:1}}>
             <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{animation:dataLoading?'spin .7s linear infinite':'none'}}>
               <path d="M11 6.5A4.5 4.5 0 1 1 6.5 2a4.5 4.5 0 0 1 3.18 1.32" stroke="#6B6B6B" strokeWidth="1.4" strokeLinecap="round"/>
               <path d="M9 1l.7 2.3L7 3.7" stroke="#6B6B6B" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
           <div style={{width:28,height:28,borderRadius:'50%',background:'#EEF0FF',border:'1.5px solid #5170FF',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#1800AD'}}>{initials}</div>
-          {!isPro && (
-            <button style={{background:'#FFCC00',color:'#1A1A1A',border:'none',borderRadius:8,padding:'5px 11px',fontFamily:'Inter,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer'}}>
-              Upgrade ✦
-            </button>
-          )}
-          {isPro && (
-            <span style={{fontSize:10,fontWeight:700,padding:'3px 9px',borderRadius:999,background:'#F3EEFF',color:'#8B5CF6'}}>Pro ✦</span>
-          )}
+          {!isPro && <button style={{background:'#FFCC00',color:'#1A1A1A',border:'none',borderRadius:8,padding:'5px 11px',fontFamily:'Inter,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer'}}>Upgrade ✦</button>}
+          {isPro  && <span style={{fontSize:10,fontWeight:700,padding:'3px 9px',borderRadius:999,background:'#F3EEFF',color:'#8B5CF6'}}>Pro ✦</span>}
           <button onClick={handleSignOut} disabled={signingOut} style={{background:'transparent',border:'1px solid #E2E2DC',borderRadius:8,padding:'5px 11px',fontSize:11,color:'#6B6B6B',cursor:'pointer',opacity:signingOut?0.5:1,fontFamily:'Inter,sans-serif'}}>
             {signingOut ? 'Signing out…' : 'Sign out'}
           </button>
         </div>
       </nav>
 
-      {/* ═══════════════════════════════════ BODY ═════════════════════════════ */}
+      {/* BODY */}
       <div style={{display:'flex',flex:1,overflow:'hidden',minHeight:0}}>
 
         {/* Sidebar */}
         <div style={{width:180,background:'#FFFFFF',borderRight:'1px solid #E2E2DC',padding:'12px 10px',display:'flex',flexDirection:'column',gap:3,flexShrink:0}}>
           {[
-            {id:'usage'   as Tab, icon:'📊', activeBg:'#FFFBE8', activeBorder:'#FFF0A0'},
-            {id:'settings'as Tab, icon:'⚙️', activeBg:'#F2F2EF', activeBorder:'#E2E2DC'},
+            {id:'usage'    as Tab, icon:'📊', activeBg:'#FFFBE8', activeBorder:'#FFF0A0'},
+            {id:'settings' as Tab, icon:'⚙️', activeBg:'#F2F2EF', activeBorder:'#E2E2DC'},
           ].map(item => (
             <button key={item.id} onClick={() => setActiveTab(item.id)} style={{
               display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,
@@ -293,7 +254,7 @@ export default function DashboardPage() {
         {/* Main content */}
         <div style={{flex:1,overflowY:'auto'}}>
 
-          {/* ════════════════════════════ USAGE TAB ══════════════════════════ */}
+          {/* ══════════════ USAGE TAB ══════════════ */}
           {activeTab === 'usage' && (
             <div style={{padding:22,display:'flex',flexDirection:'column',gap:16}}>
 
@@ -303,7 +264,6 @@ export default function DashboardPage() {
                   <div style={{fontFamily:'var(--font-heading)',fontSize:24,fontWeight:400,color:'#1A1A1A',lineHeight:1}}>Usage Overview</div>
                   <div style={{fontSize:11,color:'#6B6B6B',marginTop:3}}>Real-time limit tracking · Claude.ai</div>
                 </div>
-                {/* Status badge — Live / Stale / No data */}
                 {snap ? (
                   <div style={{display:'flex',alignItems:'center',gap:4,fontSize:10,fontWeight:600,color: staleLabel==='Just now' ? '#2DC07A' : '#F5941F'}}>
                     <span style={{width:6,height:6,borderRadius:'50%',background: staleLabel==='Just now' ? '#2DC07A' : '#F5941F',display:'inline-block'}}/>
@@ -314,14 +274,13 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              {/* Error banner */}
               {dataError && (
                 <div style={{background:'#FDECEC',border:'1px solid #E83C3C',borderRadius:8,padding:'10px 14px',fontSize:12,color:'#E83C3C'}}>
                   {dataError} <button onClick={() => user && fetchData(user.id)} style={{color:'#E83C3C',fontWeight:700,background:'none',border:'none',cursor:'pointer',fontFamily:'Inter,sans-serif'}}>Retry</button>
                 </div>
               )}
 
-              {/* Tool selector + Detail/Summary toggle */}
+              {/* Tool selector + toggle */}
               <div style={{display:'flex',alignItems:'center',gap:10,background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,padding:'10px 14px'}}>
                 <span style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#ADADAD'}}>Tool</span>
                 <div style={{display:'flex',gap:5,flex:1}}>
@@ -350,21 +309,18 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* ── No extension data yet ── */}
+              {/* No data */}
               {!dataLoading && !snap && (
                 <div style={{background:'#FFFFFF',border:'1.5px dashed #CBCBC4',borderRadius:12,padding:'32px 24px',textAlign:'center'}}>
                   <div style={{fontSize:28,marginBottom:10}}>✦</div>
-                  <div style={{fontFamily:'var(--font-heading)',fontSize:18,fontWeight:400,color:'#1A1A1A',marginBottom:6}}>
-                    No usage data yet
-                  </div>
+                  <div style={{fontFamily:'var(--font-heading)',fontSize:18,fontWeight:400,color:'#1A1A1A',marginBottom:6}}>No usage data yet</div>
                   <div style={{fontSize:12,color:'#6B6B6B',lineHeight:1.7,maxWidth:320,margin:'0 auto'}}>
-                    Install the CredFlow extension and open Claude.ai to start tracking.
-                    Data will appear here automatically after your first session.
+                    Install the CredFlow extension and open Claude.ai to start tracking. Data will appear here automatically after your first session.
                   </div>
                 </div>
               )}
 
-              {/* ── Loading skeleton ── */}
+              {/* Loading skeleton */}
               {dataLoading && (
                 <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
                   {[0,1,2].map(i => (
@@ -377,7 +333,7 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* ── DETAIL VIEW ── */}
+              {/* DETAIL VIEW */}
               {!dataLoading && snap && usageView === 'detail' && (
                 <>
                   <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
@@ -437,38 +393,43 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* Alert insight — shown only when approaching limit */}
-                  {sessionPct! >= 80 && (
+                  {/* Insight strip */}
+                  {sessionPct! >= 80 ? (
                     <div style={{background:'#FEF3E2',borderLeft:'3px solid #F5941F',borderRadius:12,padding:'12px 14px',fontSize:12,color:'#6B6B6B',lineHeight:1.6}}>
                       <strong style={{color:'#1A1A1A',fontWeight:600}}>⚠ Approaching session limit — </strong>
                       you&apos;re at {sessionPct}% of your Claude session. The extension will notify you at {sessionThreshold}%.
                     </div>
-                  )}
-                  {sessionPct! < 80 && (
+                  ) : (
                     <div style={{background:'#FFFBE8',borderLeft:'3px solid #FFCC00',borderRadius:12,padding:'12px 14px',fontSize:12,color:'#6B6B6B',lineHeight:1.6}}>
                       <strong style={{color:'#1A1A1A',fontWeight:600}}>Tip — </strong>
                       you&apos;re at {sessionPct}% of your Claude session. You&apos;ll be notified when you reach {sessionThreshold}%.
                     </div>
                   )}
 
-                  {/* 7-day bar chart */}
-                  {chartDays.length > 0 && (
+                  {/* 7-day bar chart — bars use px height (not %) for correct scaling */}
+                  {chartDays.length > 0 ? (
                     <div style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,padding:16}}>
                       <div style={{fontFamily:'var(--font-heading)',fontSize:15,fontWeight:500,color:'#1A1A1A',marginBottom:2}}>
                         7-Day Session History · Claude
                       </div>
-                      <div style={{fontSize:10,color:'#6B6B6B',marginBottom:14}}>Daily session utilisation %</div>
-                      <div style={{display:'flex',alignItems:'flex-end',gap:5,height:110}}>
+                      <div style={{fontSize:10,color:'#6B6B6B',marginBottom:14}}>Daily peak session utilisation %</div>
+                      <div style={{display:'flex',alignItems:'flex-end',gap:6,height:100}}>
                         {chartDays.map(bar => (
-                          <div key={bar.label} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:5,height:'100%',justifyContent:'flex-end'}}>
-                            <div style={{width:'100%',borderRadius:'4px 4px 0 0',background: bar.today ? '#5170FF' : '#C8D0FF',height:`${Math.max(bar.h, 2)}%`}}/>
-                            <div style={{fontSize:9,color:'#ADADAD'}}>{bar.label}</div>
+                          <div key={bar.label} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:5,justifyContent:'flex-end',height:'100%'}}>
+                            <div style={{
+                              width:'100%',
+                              borderRadius:'4px 4px 0 0',
+                              background: bar.today ? '#5170FF' : '#C8D0FF',
+                              height: `${bar.h}px`,
+                              maxHeight: '100px',
+                              transition:'height 0.3s ease',
+                            }}/>
+                            <div style={{fontSize:9,color:'#ADADAD',whiteSpace:'nowrap'}}>{bar.label}</div>
                           </div>
                         ))}
                       </div>
                     </div>
-                  )}
-                  {chartDays.length === 0 && !dataLoading && (
+                  ) : (
                     <div style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,padding:16}}>
                       <div style={{fontFamily:'var(--font-heading)',fontSize:15,fontWeight:500,color:'#1A1A1A',marginBottom:8}}>7-Day Session History · Claude</div>
                       <div style={{fontSize:11,color:'#ADADAD',textAlign:'center',padding:'24px 0'}}>History builds after 2+ days of usage</div>
@@ -477,12 +438,10 @@ export default function DashboardPage() {
                 </>
               )}
 
-              {/* ── SUMMARY VIEW ── */}
+              {/* SUMMARY VIEW */}
               {!dataLoading && snap && usageView === 'summary' && (
                 <div style={{display:'flex',flexDirection:'column',gap:8}}>
                   <div style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#ADADAD',padding:'2px 0'}}>All Tools — Combined View</div>
-
-                  {/* Claude — active with real data */}
                   <div style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,padding:12}}>
                     <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
                       <div style={{width:24,height:24,borderRadius:5,overflow:'hidden',background:'#F2F2EF',flexShrink:0}}>
@@ -497,16 +456,9 @@ export default function DashboardPage() {
                     <div style={{width:'100%',height:4,background:'#F2F2EF',borderRadius:999,overflow:'hidden'}}>
                       <div style={{height:'100%',borderRadius:999,background:'#5170FF',width:`${sessionPct}%`}}/>
                     </div>
-                    <div style={{fontSize:10,color:'#ADADAD',marginTop:5}}>
-                      Weekly: {weeklyPct}% · Resets {fmtWeeklyResets(weeklySecs)}
-                    </div>
+                    <div style={{fontSize:10,color:'#ADADAD',marginTop:5}}>Weekly: {weeklyPct}% · Resets {fmtWeeklyResets(weeklySecs)}</div>
                   </div>
-
-                  {/* Other tools — Phase 2 */}
-                  {[
-                    {name:'ChatGPT', domain:'chatgpt.com'},
-                    {name:'Gemini',  domain:'gemini.google.com'},
-                  ].map(tool => (
+                  {[{name:'ChatGPT',domain:'chatgpt.com'},{name:'Gemini',domain:'gemini.google.com'}].map(tool => (
                     <div key={tool.name} style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,padding:12,opacity:0.5}}>
                       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
                         <div style={{width:24,height:24,borderRadius:5,overflow:'hidden',background:'#F2F2EF',flexShrink:0}}>
@@ -521,11 +473,10 @@ export default function DashboardPage() {
                   ))}
                 </div>
               )}
-
             </div>
           )}
 
-          {/* ════════════════════════════ SETTINGS TAB ═══════════════════════ */}
+          {/* ══════════════ SETTINGS TAB ══════════════ */}
           {activeTab === 'settings' && (
             <div style={{padding:22,display:'flex',flexDirection:'column',gap:14}}>
               <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between'}}>
@@ -533,47 +484,28 @@ export default function DashboardPage() {
                   <div style={{fontFamily:'var(--font-heading)',fontSize:24,fontWeight:400,color:'#1A1A1A',lineHeight:1}}>Settings</div>
                   <div style={{fontSize:11,color:'#6B6B6B',marginTop:3}}>Changes save to your account and sync to the extension</div>
                 </div>
-                <button
-                  onClick={handleSaveSettings}
-                  disabled={savingSettings}
-                  style={{
-                    background: settingsSaved ? '#2DC07A' : '#1A1A1A',
-                    color:'white',border:'none',borderRadius:8,
-                    padding:'7px 16px',fontFamily:'Inter,sans-serif',fontSize:12,fontWeight:600,
-                    cursor:'pointer',transition:'background .2s',opacity:savingSettings?0.7:1,
-                  }}
-                >
+                <button onClick={handleSaveSettings} disabled={savingSettings} style={{background: settingsSaved ? '#2DC07A' : '#1A1A1A',color:'white',border:'none',borderRadius:8,padding:'7px 16px',fontFamily:'Inter,sans-serif',fontSize:12,fontWeight:600,cursor:'pointer',transition:'background .2s',opacity:savingSettings?0.7:1}}>
                   {savingSettings ? 'Saving…' : settingsSaved ? '✓ Saved' : 'Save changes'}
                 </button>
               </div>
 
-              {/* Account */}
               <SettingsSection title="Account">
-                <SettingsRow label="Email address" sub={user?.email ?? '—'} last={false}>
-                  <SmallBtn>Edit</SmallBtn>
-                </SettingsRow>
+                <SettingsRow label="Email address" sub={user?.email ?? '—'} last={false}><SmallBtn>Edit</SmallBtn></SettingsRow>
                 <SettingsRow label="Current plan" sub={isPro ? 'Pro · All features unlocked' : 'Free · Claude only · Up to 3 subscriptions'} last={false}>
                   <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#F2F2EF',borderRadius:999,padding:'3px 9px',fontSize:11,fontWeight:600,color:'#6B6B6B'}}>
                     {isPro ? <span style={{color:'#8B5CF6'}}>Pro ✦</span> : <>Free <span style={{color:'#5170FF',cursor:'pointer',fontWeight:600,marginLeft:3}}>Upgrade</span></>}
                   </span>
                 </SettingsRow>
-                <SettingsRow label="Password" sub="Change your account password" last>
-                  <SmallBtn>Change</SmallBtn>
-                </SettingsRow>
+                <SettingsRow label="Password" sub="Change your account password" last><SmallBtn>Change</SmallBtn></SettingsRow>
               </SettingsSection>
 
-              {/* Usage Alerts */}
               <SettingsSection title="Claude Usage Alerts">
                 <SettingsRow label="Enable usage alerts" sub="Chrome push notification when you approach your session limit" last={false}>
                   <Toggle on={sessionThreshold > 0} onToggle={() => setSessionThreshold(v => v > 0 ? 0 : 80)}/>
                 </SettingsRow>
                 <SettingsRow label="Session alert threshold" sub={`Notify when Claude session usage reaches ${sessionThreshold}%`} last={false}>
                   <div style={{display:'flex',alignItems:'center',gap:6}}>
-                    <input
-                      type="range" min={50} max={99} value={sessionThreshold}
-                      onChange={e => setSessionThreshold(Number(e.target.value))}
-                      style={{width:80,accentColor:'#5170FF'}}
-                    />
+                    <input type="range" min={50} max={99} value={sessionThreshold} onChange={e => setSessionThreshold(Number(e.target.value))} style={{width:80,accentColor:'#5170FF'}}/>
                     <span style={{fontSize:11,fontWeight:600,color:'#1A1A1A',minWidth:32}}>{sessionThreshold}%</span>
                   </div>
                 </SettingsRow>
@@ -582,58 +514,37 @@ export default function DashboardPage() {
                 </SettingsRow>
                 <SettingsRow label="Weekly alert threshold" sub={`Notify when weekly Claude usage reaches ${weeklyThreshold}%`} last>
                   <div style={{display:'flex',alignItems:'center',gap:6}}>
-                    <input
-                      type="range" min={50} max={99} value={weeklyThreshold}
-                      onChange={e => setWeeklyThreshold(Number(e.target.value))}
-                      style={{width:80,accentColor:'#F5941F'}}
-                    />
+                    <input type="range" min={50} max={99} value={weeklyThreshold} onChange={e => setWeeklyThreshold(Number(e.target.value))} style={{width:80,accentColor:'#F5941F'}}/>
                     <span style={{fontSize:11,fontWeight:600,color:'#1A1A1A',minWidth:32}}>{weeklyThreshold}%</span>
                   </div>
                 </SettingsRow>
               </SettingsSection>
 
-              {/* Subscription Reminders */}
               <SettingsSection title="Subscription Reminders">
                 <SettingsRow label="Enable payment reminders" sub="Chrome notification before subscription renewals" last={false}>
                   <Toggle on={reminders} onToggle={() => setReminders(v => !v)}/>
                 </SettingsRow>
                 <SettingsRow label="Default reminder time" sub="When to notify before renewal" last>
-                  <select
-                    style={S.select}
-                    defaultValue="1"
-                    onChange={() => {/* saved on Save click */}}
-                  >
-                    <option value="1">Day before</option>
-                    <option value="0">Same day</option>
-                    <option value="2">2 days before</option>
-                  </select>
+                  <select style={S.select} defaultValue="1"><option value="1">Day before</option><option value="0">Same day</option><option value="2">2 days before</option></select>
                 </SettingsRow>
               </SettingsSection>
 
-              {/* Extension */}
               <SettingsSection title="Extension">
                 <SettingsRow label="Show injected bar in Claude" sub="Display CredFlow usage bar below the composer in claude.ai" last={false}>
                   <Toggle on={injectedBar} onToggle={() => setInjectedBar(v => !v)}/>
                 </SettingsRow>
                 <SettingsRow label="Background sync frequency" sub="How often the extension syncs usage data to your account" last={false}>
-                  <select
-                    style={S.select}
-                    value={syncFreq}
-                    onChange={e => setSyncFreq(Number(e.target.value))}
-                  >
+                  <select style={S.select} value={syncFreq} onChange={e => setSyncFreq(Number(e.target.value))}>
                     <option value={1}>Every message</option>
                     <option value={5}>Every 5 minutes</option>
                     <option value={10}>Every 10 minutes</option>
                   </select>
                 </SettingsRow>
                 <SettingsRow label="Data retention" sub={isPro ? 'Pro tier: 1 year history kept' : 'Free tier: 7 days history kept'} last>
-                  <select style={S.select} disabled>
-                    <option>{isPro ? '1 year (Pro)' : '7 days (Free)'}</option>
-                  </select>
+                  <select style={S.select} disabled><option>{isPro ? '1 year (Pro)' : '7 days (Free)'}</option></select>
                 </SettingsRow>
               </SettingsSection>
 
-              {/* Danger Zone */}
               <SettingsSection title="Danger Zone">
                 <SettingsRow label="Clear all usage history" sub="Permanently delete your Claude tracking history from CredFlow" last={false}>
                   <button style={S.dangerBtn}>Clear history</button>
@@ -642,7 +553,6 @@ export default function DashboardPage() {
                   <button style={S.dangerBtn}>Delete account</button>
                 </SettingsRow>
               </SettingsSection>
-
             </div>
           )}
 
@@ -665,9 +575,7 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,overflow:'hidden'}}>
-      <div style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#ADADAD',padding:'10px 16px',borderBottom:'1px solid #E2E2DC',background:'#F2F2EF'}}>
-        {title}
-      </div>
+      <div style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#ADADAD',padding:'10px 16px',borderBottom:'1px solid #E2E2DC',background:'#F2F2EF'}}>{title}</div>
       {children}
     </div>
   )
@@ -687,9 +595,7 @@ function SettingsRow({ label, sub, children, last }: { label: string; sub: strin
 
 function SmallBtn({ children }: { children: React.ReactNode }) {
   return (
-    <button style={{background:'#F2F2EF',border:'none',borderRadius:8,padding:'4px 10px',fontFamily:'Inter,sans-serif',fontSize:10,fontWeight:600,color:'#6B6B6B',cursor:'pointer'}}>
-      {children}
-    </button>
+    <button style={{background:'#F2F2EF',border:'none',borderRadius:8,padding:'4px 10px',fontFamily:'Inter,sans-serif',fontSize:10,fontWeight:600,color:'#6B6B6B',cursor:'pointer'}}>{children}</button>
   )
 }
 
