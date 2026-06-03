@@ -52,6 +52,7 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
   const [snapshotResult, historyResult, settingsResult] = await Promise.all([
 
     // Latest snapshot for Claude
+    // platform is saved as "claude" by the extension (not "claude.ai")
     supabase
       .from('usage_snapshots')
       .select('*')
@@ -61,15 +62,15 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
       .limit(1),
 
     // Last 7 days of snapshots for the chart
-    // We fetch one per day — the most recent capture each day
+    // Fetch up to 50 — onePerDay() picks the best one per day below
     supabase
       .from('usage_snapshots')
       .select('*')
       .eq('user_id', userId)
-      .eq('platform', 'claude') 
+      .eq('platform', 'claude')
       .gte('captured_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
       .order('captured_at', { ascending: false })
-      .limit(50),   // Fetch up to 50, we'll pick one per day in the component
+      .limit(50),
 
     // User settings
     supabase
@@ -115,27 +116,32 @@ export async function saveSettings(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Given an array of snapshots, return one per day (the most recent per day).
-// Used to build the 7-day bar chart — we don't want multiple bars per day.
+// Given an array of snapshots, return the best one per day.
+// "Best" = highest session_utilization that is <= 1.0
+// Values over 1.0 are reset artifacts (SSE captured after window reset) — skip them.
+// Used to build the 7-day bar chart.
 export function onePerDay(snapshots: UsageSnapshot[]): UsageSnapshot[] {
   const dayMap = new Map<string, UsageSnapshot>()
 
   for (const snap of snapshots) {
-    const day = snap.captured_at.slice(0, 10)
+    const day      = snap.captured_at.slice(0, 10)  // "2026-06-03"
+    const snapVal  = snap.session_utilization
     const existing = dayMap.get(day)
-
-    // Prefer snapshots under 1.0 — over 1.0 are reset artifacts
-    const snapVal = snap.session_utilization
     const existVal = existing?.session_utilization ?? -1
 
     if (!existing) {
+      // First snapshot seen for this day — use it regardless
       dayMap.set(day, snap)
     } else if (snapVal <= 1.0 && snapVal > existVal) {
-      // Pick highest valid value for the day
+      // Higher valid value found for this day — use it
+      dayMap.set(day, snap)
+    } else if (existVal > 1.0 && snapVal <= 1.0) {
+      // Current best is a reset artifact — replace with any valid value
       dayMap.set(day, snap)
     }
   }
 
+  // Sort oldest first for the chart (left = oldest, right = today)
   return Array.from(dayMap.values())
     .sort((a, b) => a.captured_at.localeCompare(b.captured_at))
     .slice(-7)
@@ -150,11 +156,13 @@ export function secsUntil(isoTimestamp: string): number {
 }
 
 // Convert utilization float (0.43) to display percentage string ("43%")
+// Caps at 100% — values over 1.0 are reset artifacts, never show > 100
 export function pct(utilization: number): string {
-  return `${Math.round(utilization * 100)}%`
+  return `${Math.round(Math.min(utilization, 1.0) * 100)}%`
 }
 
 // Convert utilization float (0.43) to integer (43)
+// Caps at 100 — same reason as above
 export function pctInt(utilization: number): number {
   return Math.round(Math.min(utilization, 1.0) * 100)
 }
