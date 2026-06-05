@@ -22,91 +22,70 @@ import type { User } from '@supabase/supabase-js'
 type Tab       = 'usage' | 'settings'
 type UsageView = 'detail' | 'summary'
 
-// ── Time formatters ────────────────────────────────────────────────────────────
-
 function fmtHMS(s: number) {
-  const h   = Math.floor(s / 3600)
-  const m   = Math.floor((s % 3600) / 60)
-  const sec = s % 60
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
 }
-
 function fmtResets(s: number) {
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  return `in ${h}h ${String(m).padStart(2,'0')}m`
+  return `in ${Math.floor(s/3600)}h ${String(Math.floor((s%3600)/60)).padStart(2,'0')}m`
 }
-
 function fmtWeeklyResets(s: number) {
-  const d = Math.floor(s / 86400)
-  const h = Math.floor((s % 86400) / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  return d > 0
-    ? `in ${d}d ${String(h).padStart(2,'0')}h ${String(m).padStart(2,'0')}m`
-    : fmtResets(s)
+  const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600), m = Math.floor((s%3600)/60)
+  return d > 0 ? `in ${d}d ${String(h).padStart(2,'0')}h ${String(m).padStart(2,'0')}m` : fmtResets(s)
 }
-
 function staleness(capturedAt: string): string {
   const secs = Math.floor((Date.now() - new Date(capturedAt).getTime()) / 1000)
-  if (secs < 60)   return 'Just now'
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
-  return `${Math.floor(secs / 3600)}h ago`
+  if (secs < 60) return 'Just now'
+  if (secs < 3600) return `${Math.floor(secs/60)}m ago`
+  return `${Math.floor(secs/3600)}h ago`
 }
-
 function dayLabel(isoDate: string): string {
-  const d = new Date(isoDate)
-  return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]
+  return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(isoDate).getDay()]
 }
-
 function isToday(isoDate: string): boolean {
-  return isoDate.slice(0, 10) === new Date().toISOString().slice(0, 10)
+  return isoDate.slice(0,10) === new Date().toISOString().slice(0,10)
 }
-
-// ── Main component ─────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const router = useRouter()
-
-  const [user,         setUser]         = useState<User | null>(null)
-  const [authLoading,  setAuthLoading]  = useState(true)
-  const [data,         setData]         = useState<DashboardData | null>(null)
-  const [dataLoading,  setDataLoading]  = useState(true)
-  const [dataError,    setDataError]    = useState<string | null>(null)
-  const [activeTab,    setActiveTab]    = useState<Tab>('usage')
-  const [usageView,    setUsageView]    = useState<UsageView>('detail')
-  const [signingOut,   setSigningOut]   = useState(false)
-  const [savingSettings,  setSavingSettings]  = useState(false)
-  const [settingsSaved,   setSettingsSaved]   = useState(false)
-  const [sessionThreshold, setSessionThreshold] = useState(80)
-  const [weeklyThreshold,  setWeeklyThreshold]  = useState(75)
-  const [secondAlert,  setSecondAlert]  = useState(true)
-  const [reminders,    setReminders]    = useState(true)
-  const [injectedBar,  setInjectedBar]  = useState(true)
-  const [syncFreq,     setSyncFreq]     = useState(5)
-  const [sessionSecs,  setSessionSecs]  = useState(0)
-  const [weeklySecs,   setWeeklySecs]   = useState(0)
-  const [staleLabel,   setStaleLabel]   = useState('')
+  const [user,              setUser]              = useState<User | null>(null)
+  const [authLoading,       setAuthLoading]       = useState(true)
+  const [data,              setData]              = useState<DashboardData | null>(null)
+  const [dataLoading,       setDataLoading]       = useState(true)
+  const [dataError,         setDataError]         = useState<string | null>(null)
+  const [activeTab,         setActiveTab]         = useState<Tab>('usage')
+  const [usageView,         setUsageView]         = useState<UsageView>('detail')
+  const [signingOut,        setSigningOut]        = useState(false)
+  const [savingSettings,    setSavingSettings]    = useState(false)
+  const [settingsSaved,     setSettingsSaved]     = useState(false)
+  const [sessionThreshold,  setSessionThreshold]  = useState(80)
+  const [weeklyThreshold,   setWeeklyThreshold]   = useState(75)
+  const [secondAlert,       setSecondAlert]       = useState(true)
+  const [reminders,         setReminders]         = useState(true)
+  const [injectedBar,       setInjectedBar]       = useState(true)
+  const [syncFreq,          setSyncFreq]          = useState(5)
+  const [sessionSecs,       setSessionSecs]       = useState(0)
+  const [weeklySecs,        setWeeklySecs]        = useState(0)
+  const [staleLabel,        setStaleLabel]        = useState('')
 
   useEffect(() => {
     async function check() {
       const u = await getUser()
       if (!u) { router.replace('/login'); return }
-      setUser(u)
-      setAuthLoading(false)
+      setUser(u); setAuthLoading(false)
     }
     check()
   }, [router])
 
   const fetchData = useCallback(async (userId: string) => {
-    setDataLoading(true)
-    setDataError(null)
+    setDataLoading(true); setDataError(null)
     try {
       const result = await getDashboardData(userId)
       setData(result)
       if (result.settings) {
         const s = result.settings
         setSessionThreshold(Math.round(s.session_alert_threshold * 100))
-        setWeeklyThreshold(Math.round(s.weekly_alert_threshold  * 100))
+        setWeeklyThreshold(Math.round(s.weekly_alert_threshold * 100))
         setSecondAlert(s.second_alert_enabled)
         setReminders(s.reminders_enabled)
         setInjectedBar(s.injected_bar_enabled)
@@ -118,21 +97,16 @@ export default function DashboardPage() {
         setWeeklySecs(secsUntil(snap.weekly_reset_at))
         setStaleLabel(staleness(snap.captured_at))
       }
-    } catch {
-      setDataError('Could not load data. Check your connection.')
-    } finally {
-      setDataLoading(false)
-    }
+    } catch { setDataError('Could not load data. Check your connection.') }
+    finally { setDataLoading(false) }
   }, [])
 
-  useEffect(() => {
-    if (!authLoading && user) fetchData(user.id)
-  }, [authLoading, user, fetchData])
+  useEffect(() => { if (!authLoading && user) fetchData(user.id) }, [authLoading, user, fetchData])
 
   useEffect(() => {
     const t = setInterval(() => {
       setSessionSecs(s => Math.max(0, s - 1))
-      setWeeklySecs(s  => Math.max(0, s - 1))
+      setWeeklySecs(s => Math.max(0, s - 1))
       if (data?.latestSnapshot) setStaleLabel(staleness(data.latestSnapshot.captured_at))
     }, 1000)
     return () => clearInterval(t)
@@ -150,30 +124,23 @@ export default function DashboardPage() {
       sync_frequency_minutes:  syncFreq,
     })
     setSavingSettings(false)
-    if (result.success) {
-      setSettingsSaved(true)
-      setTimeout(() => setSettingsSaved(false), 2500)
-    }
+    if (result.success) { setSettingsSaved(true); setTimeout(() => setSettingsSaved(false), 2500) }
   }
 
   async function handleSignOut() {
-    setSigningOut(true)
-    await signOut()
-    router.replace('/login')
+    setSigningOut(true); await signOut(); router.replace('/login')
   }
 
   const initials = user?.email?.[0]?.toUpperCase() ?? 'U'
   const isPro    = data?.settings?.plan === 'pro'
 
-  // ── Chart data — px heights, capped at 100 ────────────────────────────────
-  // bar.h is 0–100 integer. We render as px directly so bars scale correctly.
-  // A 100px container with px-based heights means 86 → 86px, 53 → 53px etc.
+  // Chart — bar.h is 0–100 integer used as px height
+  // Minimum bar height is 24px so the percentage label fits inside
   const chartDays: Array<{ label: string; h: number; today: boolean }> = (() => {
     if (!data?.history.length) return []
-    const daily = onePerDay(data.history)
-    return daily.map(snap => ({
+    return onePerDay(data.history).map(snap => ({
       label: isToday(snap.captured_at) ? 'Today' : dayLabel(snap.captured_at),
-      h:     Math.max(pctInt(snap.session_utilization), 3), // min 3px so bar is visible
+      h:     Math.max(pctInt(snap.session_utilization), 24),
       today: isToday(snap.captured_at),
     }))
   })()
@@ -201,10 +168,10 @@ export default function DashboardPage() {
           {(['usage','settings'] as Tab[]).map(t => (
             <button key={t} onClick={() => setActiveTab(t)} style={{
               padding:'0 14px',height:54,display:'flex',alignItems:'center',fontSize:12,fontWeight:500,
-              cursor:'pointer',background:'transparent',border:'none',
+              cursor:'pointer',background:'transparent',border:'none',fontFamily:'Inter,sans-serif',
               color: activeTab===t ? '#1A1A1A' : '#6B6B6B',
               borderBottom: activeTab===t ? '2px solid #FFCC00' : '2px solid transparent',
-              position:'relative',top:1,transition:'all .18s',textTransform:'capitalize',fontFamily:'Inter,sans-serif',
+              position:'relative',top:1,transition:'all .18s',textTransform:'capitalize',
             }}>{t}</button>
           ))}
         </div>
@@ -229,10 +196,10 @@ export default function DashboardPage() {
 
         {/* Sidebar */}
         <div style={{width:180,background:'#FFFFFF',borderRight:'1px solid #E2E2DC',padding:'12px 10px',display:'flex',flexDirection:'column',gap:3,flexShrink:0}}>
-          {[
+          {([
             {id:'usage'    as Tab, icon:'📊', activeBg:'#FFFBE8', activeBorder:'#FFF0A0'},
             {id:'settings' as Tab, icon:'⚙️', activeBg:'#F2F2EF', activeBorder:'#E2E2DC'},
-          ].map(item => (
+          ]).map(item => (
             <button key={item.id} onClick={() => setActiveTab(item.id)} style={{
               display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,
               fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'Inter,sans-serif',
@@ -251,27 +218,24 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        {/* Main content */}
+        {/* Main */}
         <div style={{flex:1,overflowY:'auto'}}>
 
-          {/* ══════════════ USAGE TAB ══════════════ */}
+          {/* USAGE TAB */}
           {activeTab === 'usage' && (
             <div style={{padding:22,display:'flex',flexDirection:'column',gap:16}}>
 
-              {/* Header */}
               <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between'}}>
                 <div>
                   <div style={{fontFamily:'var(--font-heading)',fontSize:24,fontWeight:400,color:'#1A1A1A',lineHeight:1}}>Usage Overview</div>
                   <div style={{fontSize:11,color:'#6B6B6B',marginTop:3}}>Real-time limit tracking · Claude.ai</div>
                 </div>
                 {snap ? (
-                  <div style={{display:'flex',alignItems:'center',gap:4,fontSize:10,fontWeight:600,color: staleLabel==='Just now' ? '#2DC07A' : '#F5941F'}}>
-                    <span style={{width:6,height:6,borderRadius:'50%',background: staleLabel==='Just now' ? '#2DC07A' : '#F5941F',display:'inline-block'}}/>
+                  <div style={{display:'flex',alignItems:'center',gap:4,fontSize:10,fontWeight:600,color:staleLabel==='Just now'?'#2DC07A':'#F5941F'}}>
+                    <span style={{width:6,height:6,borderRadius:'50%',background:staleLabel==='Just now'?'#2DC07A':'#F5941F',display:'inline-block'}}/>
                     {staleLabel}
                   </div>
-                ) : (
-                  <div style={{fontSize:10,fontWeight:600,color:'#ADADAD'}}>No data yet</div>
-                )}
+                ) : <div style={{fontSize:10,fontWeight:600,color:'#ADADAD'}}>No data yet</div>}
               </div>
 
               {dataError && (
@@ -284,14 +248,14 @@ export default function DashboardPage() {
               <div style={{display:'flex',alignItems:'center',gap:10,background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,padding:'10px 14px'}}>
                 <span style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#ADADAD'}}>Tool</span>
                 <div style={{display:'flex',gap:5,flex:1}}>
-                  <div style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:999,fontSize:11,fontWeight:600,cursor:'pointer',border:'1.5px solid #1A1A1A',background:'#1A1A1A',color:'white'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:999,fontSize:11,fontWeight:600,border:'1.5px solid #1A1A1A',background:'#1A1A1A',color:'white'}}>
                     <img src="https://www.google.com/s2/favicons?sz=32&domain=claude.ai" width={13} height={13} style={{borderRadius:3}} alt=""/>
                     Claude
                   </div>
-                  {['chatgpt.com','gemini.google.com'].map((domain, i) => (
+                  {['chatgpt.com','gemini.google.com'].map((domain,i) => (
                     <div key={domain} style={{display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:999,fontSize:11,fontWeight:600,cursor:'default',border:'1.5px solid #E2E2DC',color:'#6B6B6B',opacity:0.4}}>
                       <img src={`https://www.google.com/s2/favicons?sz=32&domain=${domain}`} width={13} height={13} style={{borderRadius:3}} alt=""/>
-                      {i===0 ? 'ChatGPT' : 'Gemini'}
+                      {i===0?'ChatGPT':'Gemini'}
                       <span style={{fontSize:9,background:'#F2F2EF',padding:'1px 5px',borderRadius:999}}>Soon</span>
                     </div>
                   ))}
@@ -301,26 +265,22 @@ export default function DashboardPage() {
                     <button key={v} onClick={() => setUsageView(v)} style={{
                       padding:'3px 10px',borderRadius:999,fontSize:10,fontWeight:600,cursor:'pointer',border:'none',
                       fontFamily:'Inter,sans-serif',textTransform:'capitalize',
-                      background: usageView===v ? '#FFFFFF' : 'transparent',
-                      color: usageView===v ? '#1A1A1A' : '#6B6B6B',
-                      boxShadow: usageView===v ? '0 1px 3px rgba(0,0,0,.08)' : 'none',transition:'all .15s',
+                      background:usageView===v?'#FFFFFF':'transparent',
+                      color:usageView===v?'#1A1A1A':'#6B6B6B',
+                      boxShadow:usageView===v?'0 1px 3px rgba(0,0,0,.08)':'none',transition:'all .15s',
                     }}>{v}</button>
                   ))}
                 </div>
               </div>
 
-              {/* No data */}
               {!dataLoading && !snap && (
                 <div style={{background:'#FFFFFF',border:'1.5px dashed #CBCBC4',borderRadius:12,padding:'32px 24px',textAlign:'center'}}>
                   <div style={{fontSize:28,marginBottom:10}}>✦</div>
                   <div style={{fontFamily:'var(--font-heading)',fontSize:18,fontWeight:400,color:'#1A1A1A',marginBottom:6}}>No usage data yet</div>
-                  <div style={{fontSize:12,color:'#6B6B6B',lineHeight:1.7,maxWidth:320,margin:'0 auto'}}>
-                    Install the CredFlow extension and open Claude.ai to start tracking. Data will appear here automatically after your first session.
-                  </div>
+                  <div style={{fontSize:12,color:'#6B6B6B',lineHeight:1.7,maxWidth:320,margin:'0 auto'}}>Install the CredFlow extension and open Claude.ai to start tracking. Data will appear here automatically after your first session.</div>
                 </div>
               )}
 
-              {/* Loading skeleton */}
               {dataLoading && (
                 <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
                   {[0,1,2].map(i => (
@@ -339,17 +299,15 @@ export default function DashboardPage() {
                   <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
 
                     {/* Session card */}
-                    <div style={{background:'#FFFFFF',border:`1px solid ${sessionPct! >= 95 ? '#E83C3C' : sessionPct! >= 80 ? '#F5941F' : '#E2E2DC'}`,borderRadius:12,padding:16}}>
+                    <div style={{background:'#FFFFFF',border:`1px solid ${sessionPct!>=95?'#E83C3C':sessionPct!>=80?'#F5941F':'#E2E2DC'}`,borderRadius:12,padding:16}}>
                       <div style={{fontSize:9,textTransform:'uppercase',letterSpacing:'.9px',color:'#ADADAD',fontWeight:700,marginBottom:5}}>Claude · Session</div>
-                      <div style={{fontFamily:'var(--font-heading)',fontSize:32,fontWeight:400,lineHeight:1,marginBottom:9,color: sessionPct! >= 95 ? '#E83C3C' : sessionPct! >= 80 ? '#F5941F' : '#5170FF'}}>
+                      <div style={{fontFamily:'var(--font-heading)',fontSize:32,fontWeight:400,lineHeight:1,marginBottom:9,color:sessionPct!>=95?'#E83C3C':sessionPct!>=80?'#F5941F':'#5170FF'}}>
                         {sessionPct}%
                       </div>
                       <div style={{width:'100%',height:4,background:'#F2F2EF',borderRadius:999,overflow:'hidden',marginBottom:6}}>
-                        <div style={{height:'100%',borderRadius:999,width:`${sessionPct}%`,background: sessionPct! >= 95 ? '#E83C3C' : sessionPct! >= 80 ? '#F5941F' : '#5170FF'}}/>
+                        <div style={{height:'100%',borderRadius:999,width:`${sessionPct}%`,background:sessionPct!>=95?'#E83C3C':sessionPct!>=80?'#F5941F':'#5170FF'}}/>
                       </div>
-                      <span style={{display:'inline-block',fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:999,background:'#EEF0FF',color:'#1800AD',fontVariantNumeric:'tabular-nums'}}>
-                        {fmtHMS(sessionSecs)}
-                      </span>
+                      <span style={{display:'inline-block',fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:999,background:'#EEF0FF',color:'#1800AD',fontVariantNumeric:'tabular-nums'}}>{fmtHMS(sessionSecs)}</span>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8}}>
                         <span style={{fontSize:10,color:'#ADADAD'}}>Resets</span>
                         <span style={{fontSize:10,fontWeight:600,color:'#5170FF',fontVariantNumeric:'tabular-nums'}}>{fmtResets(sessionSecs)}</span>
@@ -357,17 +315,13 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Weekly card */}
-                    <div style={{background:'#FFFFFF',border:`1px solid ${weeklyPct! >= 80 ? '#F5941F' : '#E2E2DC'}`,borderRadius:12,padding:16}}>
+                    <div style={{background:'#FFFFFF',border:`1px solid ${weeklyPct!>=80?'#F5941F':'#E2E2DC'}`,borderRadius:12,padding:16}}>
                       <div style={{fontSize:9,textTransform:'uppercase',letterSpacing:'.9px',color:'#ADADAD',fontWeight:700,marginBottom:5}}>Claude · Weekly</div>
-                      <div style={{fontFamily:'var(--font-heading)',fontSize:32,fontWeight:400,lineHeight:1,marginBottom:9,color:'#F5941F'}}>
-                        {weeklyPct}%
-                      </div>
+                      <div style={{fontFamily:'var(--font-heading)',fontSize:32,fontWeight:400,lineHeight:1,marginBottom:9,color:'#F5941F'}}>{weeklyPct}%</div>
                       <div style={{width:'100%',height:4,background:'#F2F2EF',borderRadius:999,overflow:'hidden',marginBottom:6}}>
                         <div style={{height:'100%',borderRadius:999,background:'#F5941F',width:`${weeklyPct}%`}}/>
                       </div>
-                      <span style={{display:'inline-block',fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:999,background:'#FEF3E2',color:'#F5941F',fontVariantNumeric:'tabular-nums'}}>
-                        {fmtWeeklyResets(weeklySecs)}
-                      </span>
+                      <span style={{display:'inline-block',fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:999,background:'#FEF3E2',color:'#F5941F',fontVariantNumeric:'tabular-nums'}}>{fmtWeeklyResets(weeklySecs)}</span>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8}}>
                         <span style={{fontSize:10,color:'#ADADAD'}}>Resets</span>
                         <span style={{fontSize:10,fontWeight:600,color:'#F5941F',fontVariantNumeric:'tabular-nums'}}>{fmtWeeklyResets(weeklySecs)}</span>
@@ -378,14 +332,12 @@ export default function DashboardPage() {
                     <div style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,padding:16}}>
                       <div style={{fontSize:9,textTransform:'uppercase',letterSpacing:'.9px',color:'#ADADAD',fontWeight:700,marginBottom:5}}>Last Captured</div>
                       <div style={{fontFamily:'var(--font-heading)',fontSize:22,fontWeight:400,lineHeight:1.2,marginBottom:9,color:'#1A1A1A'}}>
-                        {new Date(snap.captured_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}
+                        {new Date(snap.captured_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
                       </div>
                       <div style={{fontSize:11,color:'#6B6B6B',marginBottom:10}}>
-                        {new Date(snap.captured_at).toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})}
+                        {new Date(snap.captured_at).toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})}
                       </div>
-                      <span style={{display:'inline-block',fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:999,background:'#E6F9F0',color:'#2DC07A'}}>
-                        v{snap.source_version}
-                      </span>
+                      <span style={{display:'inline-block',fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:999,background:'#E6F9F0',color:'#2DC07A'}}>v{snap.source_version}</span>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8}}>
                         <span style={{fontSize:10,color:'#ADADAD'}}>Synced</span>
                         <span style={{fontSize:10,fontWeight:600,color:'#2DC07A'}}>{staleLabel}</span>
@@ -393,8 +345,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* Insight strip */}
-                  {sessionPct! >= 80 ? (
+                  {sessionPct!>=80 ? (
                     <div style={{background:'#FEF3E2',borderLeft:'3px solid #F5941F',borderRadius:12,padding:'12px 14px',fontSize:12,color:'#6B6B6B',lineHeight:1.6}}>
                       <strong style={{color:'#1A1A1A',fontWeight:600}}>⚠ Approaching session limit — </strong>
                       you&apos;re at {sessionPct}% of your Claude session. The extension will notify you at {sessionThreshold}%.
@@ -406,25 +357,18 @@ export default function DashboardPage() {
                     </div>
                   )}
 
-                  {/* 7-day bar chart — bars use px height (not %) for correct scaling */}
+                  {/* 7-day bar chart */}
                   {chartDays.length > 0 ? (
                     <div style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,padding:16}}>
-                      <div style={{fontFamily:'var(--font-heading)',fontSize:15,fontWeight:500,color:'#1A1A1A',marginBottom:2}}>
-                        7-Day Session History · Claude
-                      </div>
+                      <div style={{fontFamily:'var(--font-heading)',fontSize:15,fontWeight:500,color:'#1A1A1A',marginBottom:2}}>7-Day Session History · Claude</div>
                       <div style={{fontSize:10,color:'#6B6B6B',marginBottom:14}}>Daily peak session utilisation %</div>
-                      <div style={{display:'flex',alignItems:'flex-end',gap:6,height:100}}>
+                      {/* Chart: fixed 130px container, each column stacks label+bar+day from bottom */}
+                      <div style={{display:'flex',gap:6,height:130,alignItems:'flex-end'}}>
                         {chartDays.map(bar => (
-                          <div key={bar.label} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:5,justifyContent:'flex-end',height:'100%'}}>
-                            <div style={{
-                              width:'100%',
-                              borderRadius:'4px 4px 0 0',
-                              background: bar.today ? '#5170FF' : '#C8D0FF',
-                              height: `${bar.h}px`,
-                              maxHeight: '100px',
-                              transition:'height 0.3s ease',
-                            }}/>
-                            <div style={{fontSize:9,color:'#ADADAD',whiteSpace:'nowrap'}}>{bar.label}</div>
+                          <div key={bar.label} style={{flex:1,height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',gap:4}}>
+                            <span style={{fontSize:9,fontWeight:700,color:bar.today?'#5170FF':'#9BAAE8',fontVariantNumeric:'tabular-nums',flexShrink:0,lineHeight:1}}>{bar.h}%</span>
+                            <div style={{width:'100%',flexShrink:0,borderRadius:'4px 4px 0 0',background:bar.today?'#5170FF':'#C8D0FF',height:`${bar.h}px`}}/>
+                            <div style={{fontSize:9,color:'#ADADAD',flexShrink:0,lineHeight:1}}>{bar.label}</div>
                           </div>
                         ))}
                       </div>
@@ -476,7 +420,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* ══════════════ SETTINGS TAB ══════════════ */}
+          {/* SETTINGS TAB */}
           {activeTab === 'settings' && (
             <div style={{padding:22,display:'flex',flexDirection:'column',gap:14}}>
               <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between'}}>
@@ -484,16 +428,16 @@ export default function DashboardPage() {
                   <div style={{fontFamily:'var(--font-heading)',fontSize:24,fontWeight:400,color:'#1A1A1A',lineHeight:1}}>Settings</div>
                   <div style={{fontSize:11,color:'#6B6B6B',marginTop:3}}>Changes save to your account and sync to the extension</div>
                 </div>
-                <button onClick={handleSaveSettings} disabled={savingSettings} style={{background: settingsSaved ? '#2DC07A' : '#1A1A1A',color:'white',border:'none',borderRadius:8,padding:'7px 16px',fontFamily:'Inter,sans-serif',fontSize:12,fontWeight:600,cursor:'pointer',transition:'background .2s',opacity:savingSettings?0.7:1}}>
-                  {savingSettings ? 'Saving…' : settingsSaved ? '✓ Saved' : 'Save changes'}
+                <button onClick={handleSaveSettings} disabled={savingSettings} style={{background:settingsSaved?'#2DC07A':'#1A1A1A',color:'white',border:'none',borderRadius:8,padding:'7px 16px',fontFamily:'Inter,sans-serif',fontSize:12,fontWeight:600,cursor:'pointer',transition:'background .2s',opacity:savingSettings?0.7:1}}>
+                  {savingSettings?'Saving…':settingsSaved?'✓ Saved':'Save changes'}
                 </button>
               </div>
 
               <SettingsSection title="Account">
-                <SettingsRow label="Email address" sub={user?.email ?? '—'} last={false}><SmallBtn>Edit</SmallBtn></SettingsRow>
-                <SettingsRow label="Current plan" sub={isPro ? 'Pro · All features unlocked' : 'Free · Claude only · Up to 3 subscriptions'} last={false}>
+                <SettingsRow label="Email address" sub={user?.email??'—'} last={false}><SmallBtn>Edit</SmallBtn></SettingsRow>
+                <SettingsRow label="Current plan" sub={isPro?'Pro · All features unlocked':'Free · Claude only · Up to 3 subscriptions'} last={false}>
                   <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#F2F2EF',borderRadius:999,padding:'3px 9px',fontSize:11,fontWeight:600,color:'#6B6B6B'}}>
-                    {isPro ? <span style={{color:'#8B5CF6'}}>Pro ✦</span> : <>Free <span style={{color:'#5170FF',cursor:'pointer',fontWeight:600,marginLeft:3}}>Upgrade</span></>}
+                    {isPro?<span style={{color:'#8B5CF6'}}>Pro ✦</span>:<>Free <span style={{color:'#5170FF',cursor:'pointer',fontWeight:600,marginLeft:3}}>Upgrade</span></>}
                   </span>
                 </SettingsRow>
                 <SettingsRow label="Password" sub="Change your account password" last><SmallBtn>Change</SmallBtn></SettingsRow>
@@ -501,7 +445,7 @@ export default function DashboardPage() {
 
               <SettingsSection title="Claude Usage Alerts">
                 <SettingsRow label="Enable usage alerts" sub="Chrome push notification when you approach your session limit" last={false}>
-                  <Toggle on={sessionThreshold > 0} onToggle={() => setSessionThreshold(v => v > 0 ? 0 : 80)}/>
+                  <Toggle on={sessionThreshold>0} onToggle={() => setSessionThreshold(v => v>0?0:80)}/>
                 </SettingsRow>
                 <SettingsRow label="Session alert threshold" sub={`Notify when Claude session usage reaches ${sessionThreshold}%`} last={false}>
                   <div style={{display:'flex',alignItems:'center',gap:6}}>
@@ -540,8 +484,8 @@ export default function DashboardPage() {
                     <option value={10}>Every 10 minutes</option>
                   </select>
                 </SettingsRow>
-                <SettingsRow label="Data retention" sub={isPro ? 'Pro tier: 1 year history kept' : 'Free tier: 7 days history kept'} last>
-                  <select style={S.select} disabled><option>{isPro ? '1 year (Pro)' : '7 days (Free)'}</option></select>
+                <SettingsRow label="Data retention" sub={isPro?'Pro tier: 1 year history kept':'Free tier: 7 days history kept'} last>
+                  <select style={S.select} disabled><option>{isPro?'1 year (Pro)':'7 days (Free)'}</option></select>
                 </SettingsRow>
               </SettingsSection>
 
@@ -555,14 +499,11 @@ export default function DashboardPage() {
               </SettingsSection>
             </div>
           )}
-
         </div>
       </div>
     </div>
   )
 }
-
-// ── Sub-components ─────────────────────────────────────────────────────────────
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
@@ -594,12 +535,10 @@ function SettingsRow({ label, sub, children, last }: { label: string; sub: strin
 }
 
 function SmallBtn({ children }: { children: React.ReactNode }) {
-  return (
-    <button style={{background:'#F2F2EF',border:'none',borderRadius:8,padding:'4px 10px',fontFamily:'Inter,sans-serif',fontSize:10,fontWeight:600,color:'#6B6B6B',cursor:'pointer'}}>{children}</button>
-  )
+  return <button style={{background:'#F2F2EF',border:'none',borderRadius:8,padding:'4px 10px',fontFamily:'Inter,sans-serif',fontSize:10,fontWeight:600,color:'#6B6B6B',cursor:'pointer'}}>{children}</button>
 }
 
 const S: Record<string, React.CSSProperties> = {
-  select: {height:26,border:'1.5px solid #E2E2DC',borderRadius:8,padding:'0 7px',fontFamily:'Inter,sans-serif',fontSize:11,color:'#1A1A1A',background:'white',outline:'none'},
+  select:    {height:26,border:'1.5px solid #E2E2DC',borderRadius:8,padding:'0 7px',fontFamily:'Inter,sans-serif',fontSize:11,color:'#1A1A1A',background:'white',outline:'none'},
   dangerBtn: {background:'#FDECEC',color:'#E83C3C',border:'1.5px solid #E83C3C',borderRadius:8,padding:'4px 12px',fontFamily:'Inter,sans-serif',fontSize:10,fontWeight:700,cursor:'pointer'},
 }
