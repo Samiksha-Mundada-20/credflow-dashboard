@@ -292,7 +292,7 @@ export default function DashboardPage() {
 
         // Seed settings form from fetched data
         if (d?.settings) {
-          const s = d.settings as Record<string, number | boolean>
+          const s = d.settings as unknown as Record<string, number | boolean>
           if (typeof s.session_alert_threshold === 'number') {
             setSessionThreshold(Math.round(s.session_alert_threshold * 100))
           }
