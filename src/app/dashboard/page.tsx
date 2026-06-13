@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getUser, signOut } from '@/lib/auth'
-import { getDashboardData } from '@/lib/data'
+import { getDashboardData, UserSettings } from '@/lib/data'
 import LockedChartOverlay from '@/components/LockedChartOverlay'
 import UpgradePromptCard from '@/components/UpgradePromptCard'
 
@@ -34,7 +34,7 @@ type DashboardData = {
   latest: Snapshot | null
   history: Snapshot[]          // up to 30 snapshots, one per day
   plan: 'free' | 'pro'
-  settings: Record<string, unknown>
+  settings: UserSettings | null
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
