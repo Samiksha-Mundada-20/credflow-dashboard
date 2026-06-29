@@ -1,6 +1,7 @@
 // src/lib/data.ts
 // All Supabase data queries for the dashboard.
 // Step 10: DashboardData now includes plan field for chart gating.
+// Step 14 prep: DashboardData now includes latestChatGPTSnapshot and chatgptHistory.
 // Every query adds .eq('user_id', userId) alongside RLS — double protection.
 // No query here reads message content — only utilization floats and timestamps.
 
@@ -39,21 +40,32 @@ export type UserSettings = {
 
 // Shape returned by getDashboardData
 // Step 10 addition: plan field for chart gating (derived from settings.plan)
+// Step 14 prep addition: latestChatGPTSnapshot and chatgptHistory
 export type DashboardData = {
   latestSnapshot: UsageSnapshot | null
   history: UsageSnapshot[]
   settings: UserSettings | null
-  plan: 'free' | 'pro'           // Step 10: convenience field, mirrors settings.plan
+  plan: 'free' | 'pro'                        // Step 10: convenience field, mirrors settings.plan
+  latestChatGPTSnapshot: UsageSnapshot | null  // Step 14 prep: most recent ChatGPT sync
+  chatgptHistory: UsageSnapshot[]              // Step 14 prep: last 7 days of ChatGPT snapshots
 }
 
 // ─── getDashboardData ─────────────────────────────────────────────────────────
 // Main fetch — called on dashboard mount.
-// Returns latest snapshot, 7-day history, and user settings in one go.
+// Returns latest snapshot, 7-day history, user settings, and ChatGPT data in one go.
 
 export async function getDashboardData(userId: string): Promise<DashboardData> {
-  const [snapshotResult, historyResult, settingsResult] = await Promise.all([
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
-    // Latest snapshot for Claude
+  const [
+    snapshotResult,
+    historyResult,
+    settingsResult,
+    chatgptSnapResult,
+    chatgptHistoryResult,
+  ] = await Promise.all([
+
+    // Latest Claude snapshot
     supabase
       .from('usage_snapshots')
       .select('*')
@@ -62,13 +74,13 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
       .order('captured_at', { ascending: false })
       .limit(1),
 
-    // Last 7 days of snapshots for the chart
+    // Last 7 days of Claude snapshots for the chart
     supabase
       .from('usage_snapshots')
       .select('*')
       .eq('user_id', userId)
       .eq('platform', 'claude')
-      .gte('captured_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .gte('captured_at', sevenDaysAgo)
       .order('captured_at', { ascending: false })
       .limit(50),
 
@@ -79,15 +91,35 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
       .eq('user_id', userId)
       .single(),
 
+    // Latest ChatGPT snapshot
+    supabase
+      .from('usage_snapshots')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('platform', 'chatgpt')
+      .order('captured_at', { ascending: false })
+      .limit(1),
+
+    // Last 7 days of ChatGPT snapshots
+    supabase
+      .from('usage_snapshots')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('platform', 'chatgpt')
+      .gte('captured_at', sevenDaysAgo)
+      .order('captured_at', { ascending: false })
+      .limit(50),
   ])
 
   const settings = settingsResult.data ?? null
 
   return {
-    latestSnapshot: snapshotResult.data?.[0] ?? null,
-    history: historyResult.data ?? [],
+    latestSnapshot:        snapshotResult.data?.[0]       ?? null,
+    history:               historyResult.data              ?? [],
     settings,
-    plan: settings?.plan ?? 'free',   // Step 10: defaults to free if no row
+    plan:                  settings?.plan                  ?? 'free',
+    latestChatGPTSnapshot: chatgptSnapResult.data?.[0]    ?? null,
+    chatgptHistory:        chatgptHistoryResult.data       ?? [],
   }
 }
 

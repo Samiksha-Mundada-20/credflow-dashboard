@@ -1,7 +1,7 @@
 // src/app/dashboard/page.tsx
 // Dashboard — fully connected to Supabase backend.
 // Step 10: 7-day history chart gated by plan.
-// Free users see lock overlay. Pro users see full chart.
+// Step 14 prep: ChatGPT section added to Detail view below insight strip.
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
@@ -66,6 +66,8 @@ export default function DashboardPage() {
   const [sessionSecs,       setSessionSecs]       = useState(0)
   const [weeklySecs,        setWeeklySecs]        = useState(0)
   const [staleLabel,        setStaleLabel]        = useState('')
+  // ChatGPT reset countdown — mirrors sessionSecs logic for Claude
+  const [chatgptSecs,       setChatgptSecs]       = useState(0)
 
   useEffect(() => {
     async function check() {
@@ -96,6 +98,10 @@ export default function DashboardPage() {
         setWeeklySecs(secsUntil(snap.weekly_reset_at))
         setStaleLabel(staleness(snap.captured_at))
       }
+      // Populate ChatGPT reset countdown
+      if (result.latestChatGPTSnapshot?.session_reset_at) {
+        setChatgptSecs(secsUntil(result.latestChatGPTSnapshot.session_reset_at))
+      }
     } catch { setDataError('Could not load data. Check your connection.') }
     finally { setDataLoading(false) }
   }, [])
@@ -106,6 +112,7 @@ export default function DashboardPage() {
     const t = setInterval(() => {
       setSessionSecs(s => Math.max(0, s - 1))
       setWeeklySecs(s => Math.max(0, s - 1))
+      setChatgptSecs(s => Math.max(0, s - 1))
       if (data?.latestSnapshot) setStaleLabel(staleness(data.latestSnapshot.captured_at))
     }, 1000)
     return () => clearInterval(t)
@@ -145,6 +152,11 @@ export default function DashboardPage() {
   const snap: UsageSnapshot | null = data?.latestSnapshot ?? null
   const sessionPct = snap ? pctInt(snap.session_utilization) : null
   const weeklyPct  = snap ? pctInt(snap.weekly_utilization)  : null
+
+  // ChatGPT derived values
+  const chatgptSnap: UsageSnapshot | null = data?.latestChatGPTSnapshot ?? null
+  const chatgptPct = chatgptSnap ? pctInt(chatgptSnap.session_utilization) : null
+  const chatgptStale = chatgptSnap ? staleness(chatgptSnap.captured_at) : null
 
   if (authLoading) return (
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#FAFAF8'}}>
@@ -293,6 +305,7 @@ export default function DashboardPage() {
               {/* DETAIL VIEW */}
               {!dataLoading && snap && usageView === 'detail' && (
                 <>
+                  {/* ── Claude cards ── */}
                   <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
 
                     {/* Session card */}
@@ -342,6 +355,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
+                  {/* Insight strip */}
                   {sessionPct!>=80 ? (
                     <div style={{background:'#FEF3E2',borderLeft:'3px solid #F5941F',borderRadius:12,padding:'12px 14px',fontSize:12,color:'#6B6B6B',lineHeight:1.6}}>
                       <strong style={{color:'#1A1A1A',fontWeight:600}}>⚠ Approaching session limit — </strong>
@@ -353,6 +367,99 @@ export default function DashboardPage() {
                       you&apos;re at {sessionPct}% of your Claude session. You&apos;ll be notified when you reach {sessionThreshold}%.
                     </div>
                   )}
+
+                  {/* ── ChatGPT section ─────────────────────────────────────────────────
+                      Pro users see full data.
+                      Free users see the section but with a lock overlay — same pattern
+                      as the 7-day history chart.
+                  ──────────────────────────────────────────────────────────────────── */}
+                  <div style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,overflow:'hidden'}}>
+
+                    {/* Section header */}
+                    <div style={{display:'flex',alignItems:'center',gap:8,padding:'12px 16px',borderBottom:'1px solid #E2E2DC',background:'#F2F2EF'}}>
+                      <img src="https://www.google.com/s2/favicons?sz=32&domain=chatgpt.com" width={14} height={14} style={{borderRadius:3,flexShrink:0}} alt=""/>
+                      <span style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#6B6B6B'}}>ChatGPT · Session</span>
+                      {chatgptSnap && chatgptStale && (
+                        <span style={{marginLeft:'auto',fontSize:10,fontWeight:600,color:'#ADADAD'}}>{chatgptStale}</span>
+                      )}
+                      {!isPro && (
+                        <span style={{marginLeft: chatgptSnap ? 8 : 'auto',fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#ADADAD',background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:999,padding:'2px 9px'}}>Pro</span>
+                      )}
+                    </div>
+
+                    {/* Content — relative so lock overlay can sit on top */}
+                    <div style={{position:'relative',padding:16}}>
+
+                      {/* No data yet — shown to everyone when no ChatGPT snapshot exists */}
+                      {!chatgptSnap && (
+                        <div style={{textAlign:'center',padding:'20px 0'}}>
+                          <div style={{fontSize:11,color:'#ADADAD',lineHeight:1.6}}>
+                            No data yet — open ChatGPT with the extension active to start tracking.
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Data — shown when a ChatGPT snapshot exists */}
+                      {chatgptSnap && (
+                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+
+                          {/* ChatGPT session utilization card */}
+                          <div style={{background:'#F2F2EF',borderRadius:10,padding:14}}>
+                            <div style={{fontSize:9,textTransform:'uppercase',letterSpacing:'.9px',color:'#ADADAD',fontWeight:700,marginBottom:5}}>Session Used</div>
+                            <div style={{fontFamily:'var(--font-heading)',fontSize:28,fontWeight:400,lineHeight:1,marginBottom:9,
+                              color: chatgptPct!>=95?'#E83C3C':chatgptPct!>=80?'#F5941F':'#2DC07A'
+                            }}>
+                              {chatgptPct}%
+                            </div>
+                            <div style={{width:'100%',height:4,background:'#E2E2DC',borderRadius:999,overflow:'hidden',marginBottom:8}}>
+                              <div style={{height:'100%',borderRadius:999,width:`${chatgptPct}%`,
+                                background: chatgptPct!>=95?'#E83C3C':chatgptPct!>=80?'#F5941F':'#2DC07A'
+                              }}/>
+                            </div>
+                            <div style={{fontSize:10,color:'#6B6B6B'}}>of estimated window limit</div>
+                          </div>
+
+                          {/* ChatGPT reset countdown card */}
+                          <div style={{background:'#F2F2EF',borderRadius:10,padding:14}}>
+                            <div style={{fontSize:9,textTransform:'uppercase',letterSpacing:'.9px',color:'#ADADAD',fontWeight:700,marginBottom:5}}>Window Resets</div>
+                            <div style={{fontFamily:'var(--font-heading)',fontSize:20,fontWeight:400,lineHeight:1.2,marginBottom:5,color:'#1A1A1A',fontVariantNumeric:'tabular-nums'}}>
+                              {chatgptSecs > 0 ? fmtResets(chatgptSecs) : '—'}
+                            </div>
+                            <div style={{fontSize:10,color:'#6B6B6B',marginTop:8}}>
+                              Last synced: {new Date(chatgptSnap.captured_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Lock overlay — free users only */}
+                      {!isPro && (
+                        <div style={{
+                          position:'absolute',inset:0,
+                          backdropFilter:'blur(5px)',
+                          WebkitBackdropFilter:'blur(5px)',
+                          background:'rgba(250,250,248,0.72)',
+                          borderRadius:8,
+                          display:'flex',flexDirection:'column',
+                          alignItems:'center',justifyContent:'center',
+                          gap:10,zIndex:10,
+                          minHeight: chatgptSnap ? 'unset' : 80,
+                        }}>
+                          <div style={{width:36,height:36,borderRadius:'50%',background:'#F2F2EF',border:'1px solid #E2E2DC',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>🔒</div>
+                          <div style={{fontFamily:'var(--font-heading)',fontSize:16,fontWeight:500,color:'#1A1A1A',textAlign:'center'}}>ChatGPT tracking is Pro</div>
+                          <div style={{fontSize:12,color:'#6B6B6B',textAlign:'center',maxWidth:200,lineHeight:1.5}}>Upgrade to see your ChatGPT usage alongside Claude.</div>
+                          <a href="https://credflow.vercel.app/#pricing" target="_blank" rel="noreferrer" style={{
+                            marginTop:4,padding:'8px 20px',
+                            background:'#FFCC00',color:'#1A1A1A',
+                            fontFamily:'Inter,sans-serif',fontSize:12,fontWeight:700,
+                            borderRadius:8,textDecoration:'none',
+                          }}>
+                            Upgrade to Pro — $4/mo
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
                   {/* 7-day bar chart — gated by plan */}
                   {chartDays.length > 0 ? (
