@@ -5,7 +5,6 @@
 
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
-import { createClient } from '@supabase/supabase-js'
 
 export default async function RootPage() {
   // We check the session by reading the auth cookie that Supabase sets.
