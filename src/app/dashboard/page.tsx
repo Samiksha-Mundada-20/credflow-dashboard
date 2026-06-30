@@ -183,6 +183,12 @@ export default function DashboardPage() {
               position:'relative',top:1,transition:'all .18s',textTransform:'capitalize',
             }}>{t}</button>
           ))}
+          <a href="/convert" style={{
+            padding:'0 14px',height:54,display:'flex',alignItems:'center',fontSize:12,fontWeight:500,
+            cursor:'pointer',background:'transparent',border:'none',fontFamily:'Inter,sans-serif',
+            color:'#6B6B6B',borderBottom:'2px solid transparent',
+            position:'relative',top:1,textDecoration:'none',
+          }}>Convert</a>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:9}}>
           <button onClick={() => user && fetchData(user.id)} disabled={dataLoading} title="Refresh" style={{width:28,height:28,borderRadius:8,background:'#F2F2EF',border:'none',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',opacity:dataLoading?0.5:1}}>
@@ -221,6 +227,15 @@ export default function DashboardPage() {
               {item.id}
             </button>
           ))}
+          <a href="/convert" style={{
+            display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,
+            fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'Inter,sans-serif',
+            color:'#6B6B6B',background:'transparent',border:'1px solid transparent',
+            textDecoration:'none',transition:'all .15s',
+          }}>
+            <span style={{width:18,height:18,borderRadius:4,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,background:'#F2F2EF',flexShrink:0}}>📄</span>
+            Convert
+          </a>
           <button style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,fontSize:12,color:'#6B6B6B',fontWeight:500,cursor:'pointer',border:'1px solid transparent',background:'transparent',marginTop:'auto',fontFamily:'Inter,sans-serif'}}>
             <span style={{width:18,height:18,borderRadius:4,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,background:'#F2F2EF',flexShrink:0}}>?</span>
             Help
