@@ -79,7 +79,7 @@ export default function ConvertPage() {
   function validateFile(f: File): string | null {
     const ext = getExt(f.name)
     if (!ALLOWED_TYPES.includes(ext)) return `Unsupported type: ${ext || 'unknown'}. Use PDF, DOCX, PPTX, or TXT.`
-    if (f.size > 20 * 1024 * 1024) return 'File too large. Max 20 MB.'
+    if (f.size > 50 * 1024 * 1024) return 'File too large. Max 50 MB.'
     return null
   }
 
@@ -326,7 +326,7 @@ export default function ConvertPage() {
                     <div style={{fontFamily:'var(--font-heading)',fontSize:17,fontWeight:400,color:'#1A1A1A',marginBottom:5}}>
                       {isDragging ? 'Drop it here' : 'Drop a file or click to browse'}
                     </div>
-                    <div style={{fontSize:12,color:'#ADADAD'}}>PDF · DOCX · PPTX · TXT · max 20 MB</div>
+                    <div style={{fontSize:12,color:'#ADADAD'}}>PDF · DOCX · PPTX · TXT · max 50 MB</div>
                   </>
                 ) : (
                   <div style={{display:'flex',alignItems:'center',gap:12,justifyContent:'center'}}>
