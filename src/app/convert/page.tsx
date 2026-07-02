@@ -51,6 +51,7 @@ export default function ConvertPage() {
   const [errorMsg,     setErrorMsg]     = useState<string>('')
   const [isDragging,   setIsDragging]   = useState(false)
   const [copied,       setCopied]       = useState(false)
+  const [claudeToast,  setClaudeToast]  = useState(false)
   const [conversions,  setConversions]  = useState(0) // free-tier counter
 
   const fileInputRef  = useRef<HTMLInputElement>(null)
@@ -167,7 +168,10 @@ export default function ConvertPage() {
 
   function handleOpenInClaude() {
     if (!markdown) return
-    navigator.clipboard.writeText(markdown)
+    navigator.clipboard.writeText(markdown).then(() => {
+      setClaudeToast(true)
+      setTimeout(() => setClaudeToast(false), 4000)
+    })
     window.open('https://claude.ai', '_blank')
   }
 
@@ -429,6 +433,21 @@ export default function ConvertPage() {
           </div>
         </div>
       </div>
+
+      {/* Claude toast */}
+      {claudeToast && (
+        <div style={{
+          position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)',
+          background:'#1A1A1A', color:'white', borderRadius:10,
+          padding:'12px 20px', fontSize:12, fontWeight:500,
+          display:'flex', alignItems:'center', gap:8,
+          boxShadow:'0 4px 20px rgba(0,0,0,0.25)', zIndex:999,
+          fontFamily:'Inter,sans-serif', whiteSpace:'nowrap',
+        }}>
+          <span style={{fontSize:16}}>✦</span>
+          Markdown copied — paste it into Claude with Ctrl+V
+        </div>
+      )}
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
