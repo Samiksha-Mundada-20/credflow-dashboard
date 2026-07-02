@@ -268,6 +268,17 @@ export default function DashboardPage() {
                 </div>
               )}
 
+              {/* Stale data warning — shown when last sync was more than 2 hours ago */}
+              {snap && (() => {
+                const ageHours = (Date.now() - new Date(snap.captured_at).getTime()) / (1000 * 60 * 60)
+                return ageHours > 2
+              })() && (
+                <div style={{background:'#FEF3E2',border:'1px solid #F5941F',borderRadius:8,padding:'10px 14px',fontSize:12,color:'#6B6B6B',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+                  <span>⚠ Data is <strong style={{color:'#1A1A1A'}}>{staleLabel}</strong> — open Claude.ai with the extension active to get a fresh reading.</span>
+                  <button onClick={() => user && fetchData(user.id)} style={{background:'#F5941F',color:'white',border:'none',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'Inter,sans-serif',flexShrink:0}}>Refresh</button>
+                </div>
+              )}
+
               {/* Tool selector + toggle */}
               <div style={{display:'flex',alignItems:'center',gap:10,background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,padding:'10px 14px'}}>
                 <span style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#ADADAD'}}>Tool</span>
