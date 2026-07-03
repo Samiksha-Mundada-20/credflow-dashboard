@@ -15,7 +15,14 @@ import type { User } from '@supabase/supabase-js'
 const SUPABASE_URL      = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const CONVERT_ENDPOINT  = `${SUPABASE_URL}/functions/v1/convert-to-markdown`
 const FREE_LIMIT        = 5
-const ALLOWED_TYPES     = ['.pdf', '.docx', '.pptx', '.txt']
+const CODE_TYPES = [
+  '.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.c', '.cpp', '.cc', '.h', '.hpp',
+  '.cs', '.go', '.rs', '.rb', '.php', '.swift', '.kt', '.scala', '.r', '.m',
+  '.sh', '.bash', '.zsh', '.sql', '.html', '.css', '.scss', '.sass', '.less',
+  '.json', '.yaml', '.yml', '.toml', '.xml', '.md', '.mdx', '.vue', '.svelte',
+  '.dart', '.lua', '.pl', '.ex', '.exs', '.clj', '.hs', '.elm', '.tf', '.env',
+]
+const ALLOWED_TYPES     = ['.pdf', '.docx', '.pptx', '.txt', ...CODE_TYPES]
 const ALLOWED_MIME      = [
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -267,7 +274,7 @@ export default function ConvertPage() {
           {/* Header */}
           <div style={{marginBottom:20}}>
             <div style={{fontFamily:'var(--font-heading)',fontSize:24,fontWeight:400,color:'#1A1A1A',lineHeight:1}}>Convert to Markdown</div>
-            <div style={{fontSize:11,color:'#6B6B6B',marginTop:3}}>PDF, DOCX, PPTX, TXT → clean Markdown, ready for Claude</div>
+            <div style={{fontSize:11,color:'#6B6B6B',marginTop:3}}>PDF, DOCX, PPTX, TXT, and 40+ code formats → clean Markdown, ready for Claude</div>
           </div>
 
           {/* Free tier counter */}
@@ -315,7 +322,7 @@ export default function ConvertPage() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.docx,.pptx,.txt"
+                  accept=".pdf,.docx,.pptx,.txt,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.cs,.go,.rs,.rb,.php,.swift,.kt,.sh,.sql,.html,.css,.json,.yaml,.yml,.md,.vue,.svelte,.dart,.lua,.xml,.toml"
                   style={{display:'none'}}
                   onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f) }}
                 />
@@ -326,7 +333,7 @@ export default function ConvertPage() {
                     <div style={{fontFamily:'var(--font-heading)',fontSize:17,fontWeight:400,color:'#1A1A1A',marginBottom:5}}>
                       {isDragging ? 'Drop it here' : 'Drop a file or click to browse'}
                     </div>
-                    <div style={{fontSize:12,color:'#ADADAD'}}>PDF · DOCX · PPTX · TXT · max 50 MB</div>
+                    <div style={{fontSize:12,color:'#ADADAD'}}>PDF · DOCX · PPTX · TXT · Code files · max 50 MB</div>
                   </>
                 ) : (
                   <div style={{display:'flex',alignItems:'center',gap:12,justifyContent:'center'}}>
