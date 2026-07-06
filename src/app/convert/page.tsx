@@ -1,8 +1,10 @@
 // src/app/convert/page.tsx
-// Markdown file converter — Step 14
-// Accepts PDF, DOCX, PPTX, TXT → returns Markdown via Edge Function
-// Free: 5 conversions per session (React state only, no DB)
+// Markdown file converter — Step 14 + multi-file batch addition
+// Accepts PDF, DOCX, PPTX, TXT, code files → returns Markdown via Edge Function
+// Free: 5 conversions per session (React state only, no DB) — each file in a
+// batch counts individually against the 5-file cap.
 // Pro: unlimited
+// Batch: up to 5 files per conversion, each returned as its own markdown output.
 
 'use client'
 
@@ -15,6 +17,7 @@ import type { User } from '@supabase/supabase-js'
 const SUPABASE_URL      = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const CONVERT_ENDPOINT  = `${SUPABASE_URL}/functions/v1/convert-to-markdown`
 const FREE_LIMIT        = 5
+const MAX_FILES         = 5
 const CODE_TYPES = [
   '.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.c', '.cpp', '.cc', '.h', '.hpp',
   '.cs', '.go', '.rs', '.rb', '.php', '.swift', '.kt', '.scala', '.r', '.m',
@@ -23,14 +26,9 @@ const CODE_TYPES = [
   '.dart', '.lua', '.pl', '.ex', '.exs', '.clj', '.hs', '.elm', '.tf', '.env',
 ]
 const ALLOWED_TYPES     = ['.pdf', '.docx', '.pptx', '.txt', ...CODE_TYPES]
-const ALLOWED_MIME      = [
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'text/plain',
-]
 
 type ConvertState = 'idle' | 'converting' | 'done' | 'error'
+type FileResult = { filename: string; markdown?: string; error?: string }
 
 function getExt(filename: string): string {
   const i = filename.lastIndexOf('.')
@@ -43,6 +41,21 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function iconFor(filename: string): string {
+  const ext = getExt(filename)
+  if (ext === '.pdf')  return '📕'
+  if (ext === '.docx') return '📘'
+  if (ext === '.pptx') return '📙'
+  return '📄'
+}
+
+function buildCombinedMarkdown(results: FileResult[]): string {
+  return results
+    .filter(r => r.markdown)
+    .map(r => `# ${r.filename}\n\n${r.markdown}`)
+    .join('\n\n---\n\n')
+}
+
 export default function ConvertPage() {
   const router = useRouter()
 
@@ -52,12 +65,12 @@ export default function ConvertPage() {
   const [signingOut,   setSigningOut]   = useState(false)
 
   // Converter state
-  const [file,         setFile]         = useState<File | null>(null)
+  const [files,        setFiles]        = useState<File[]>([])
   const [state,        setState]        = useState<ConvertState>('idle')
-  const [markdown,     setMarkdown]     = useState<string>('')
+  const [results,      setResults]      = useState<FileResult[]>([])
   const [errorMsg,     setErrorMsg]     = useState<string>('')
   const [isDragging,   setIsDragging]   = useState(false)
-  const [copied,       setCopied]       = useState(false)
+  const [copiedIndex,  setCopiedIndex]  = useState<number | 'all' | null>(null)
   const [claudeToast,  setClaudeToast]  = useState(false)
   const [conversions,  setConversions]  = useState(0) // free-tier counter
 
@@ -85,16 +98,50 @@ export default function ConvertPage() {
   // ── File validation ───────────────────────────────────────────────────────
   function validateFile(f: File): string | null {
     const ext = getExt(f.name)
-    if (!ALLOWED_TYPES.includes(ext)) return `Unsupported type: ${ext || 'unknown'}. Use PDF, DOCX, PPTX, or TXT.`
+    if (!ALLOWED_TYPES.includes(ext)) return `Unsupported type: ${ext || 'unknown'}.`
     if (f.size > 50 * 1024 * 1024) return 'File too large. Max 50 MB.'
     return null
   }
 
-  function pickFile(f: File) {
-    const err = validateFile(f)
-    if (err) { setErrorMsg(err); setState('error'); return }
-    setFile(f)
-    setMarkdown('')
+  function pickFiles(newFiles: File[]) {
+    if (newFiles.length === 0) return
+
+    if (newFiles.length > MAX_FILES) {
+      setErrorMsg(`You can convert up to ${MAX_FILES} files at once. You selected ${newFiles.length}.`)
+      setState('error')
+      return
+    }
+
+    const badFiles: string[] = []
+    for (const f of newFiles) {
+      const err = validateFile(f)
+      if (err) badFiles.push(`${f.name} — ${err}`)
+    }
+    if (badFiles.length > 0) {
+      setErrorMsg(badFiles.join(' | '))
+      setState('error')
+      return
+    }
+
+    setFiles(newFiles)
+    setResults([])
+    setErrorMsg('')
+    setState('idle')
+  }
+
+  function addFiles(newFiles: File[]) {
+    if (files.length + newFiles.length > MAX_FILES) {
+      setErrorMsg(`You can convert up to ${MAX_FILES} files at once. You already have ${files.length} selected.`)
+      setState('error')
+      return
+    }
+    pickFiles([...files, ...newFiles])
+  }
+
+  function removeFile(idx: number) {
+    const next = files.filter((_, i) => i !== idx)
+    setFiles(next)
+    setResults([])
     setErrorMsg('')
     setState('idle')
   }
@@ -103,22 +150,28 @@ export default function ConvertPage() {
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
-    const f = e.dataTransfer.files[0]
-    if (f) pickFile(f)
-  }, [])
+    const dropped = Array.from(e.dataTransfer.files)
+    if (dropped.length === 0) return
+    if (files.length === 0) pickFiles(dropped)
+    else addFiles(dropped)
+  }, [files])
 
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true) }
   const onDragLeave = () => setIsDragging(false)
 
   // ── Convert ───────────────────────────────────────────────────────────────
   async function handleConvert() {
-    if (!file || !user) return
+    if (files.length === 0 || !user) return
 
-    // Free tier limit check
-    if (!isPro && conversions >= FREE_LIMIT) return
+    // Free tier limit check — batch must fit in remaining allowance
+    if (!isPro && conversions + files.length > FREE_LIMIT) {
+      setState('error')
+      setErrorMsg(`Not enough conversions left this session. You have ${FREE_LIMIT - conversions} remaining, but selected ${files.length} file${files.length !== 1 ? 's' : ''}.`)
+      return
+    }
 
     setState('converting')
-    setMarkdown('')
+    setResults([])
     setErrorMsg('')
 
     try {
@@ -127,8 +180,7 @@ export default function ConvertPage() {
       if (!token) { setState('error'); setErrorMsg('Session expired. Please sign in again.'); return }
 
       const form = new FormData()
-      form.append('file', file)
-      form.append('filename', file.name)
+      files.forEach(f => form.append('files', f, f.name))
 
       const res = await fetch(CONVERT_ENDPOINT, {
         method: 'POST',
@@ -144,9 +196,9 @@ export default function ConvertPage() {
         return
       }
 
-      setMarkdown(json.markdown)
+      setResults(json.results ?? [])
       setState('done')
-      if (!isPro) setConversions(c => c + 1)
+      if (!isPro) setConversions(c => c + files.length)
 
     } catch (err) {
       setState('error')
@@ -154,28 +206,50 @@ export default function ConvertPage() {
     }
   }
 
-  // ── Actions ───────────────────────────────────────────────────────────────
-  function handleDownload() {
-    if (!markdown) return
-    const base = file?.name.replace(/\.[^.]+$/, '') ?? 'converted'
-    const blob = new Blob([markdown], { type: 'text/markdown' })
+  // ── Per-file actions ──────────────────────────────────────────────────────
+  function handleDownloadOne(r: FileResult) {
+    if (!r.markdown) return
+    const base = r.filename.replace(/\.[^.]+$/, '')
+    const blob = new Blob([r.markdown], { type: 'text/markdown' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href = url; a.download = `${base}.md`; a.click()
     URL.revokeObjectURL(url)
   }
 
-  function handleCopy() {
-    if (!markdown) return
-    navigator.clipboard.writeText(markdown).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+  function handleCopyOne(idx: number) {
+    const r = results[idx]
+    if (!r?.markdown) return
+    navigator.clipboard.writeText(r.markdown).then(() => {
+      setCopiedIndex(idx)
+      setTimeout(() => setCopiedIndex(null), 2000)
+    })
+  }
+
+  // ── Combined actions ──────────────────────────────────────────────────────
+  function handleDownloadAll() {
+    const combined = buildCombinedMarkdown(results)
+    if (!combined) return
+    const blob = new Blob([combined], { type: 'text/markdown' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url; a.download = 'converted-batch.md'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function handleCopyAll() {
+    const combined = buildCombinedMarkdown(results)
+    if (!combined) return
+    navigator.clipboard.writeText(combined).then(() => {
+      setCopiedIndex('all')
+      setTimeout(() => setCopiedIndex(null), 2000)
     })
   }
 
   function handleOpenInClaude() {
-    if (!markdown) return
-    navigator.clipboard.writeText(markdown).then(() => {
+    const combined = buildCombinedMarkdown(results)
+    if (!combined) return
+    navigator.clipboard.writeText(combined).then(() => {
       setClaudeToast(true)
       setTimeout(() => setClaudeToast(false), 4000)
     })
@@ -183,8 +257,8 @@ export default function ConvertPage() {
   }
 
   function handleReset() {
-    setFile(null)
-    setMarkdown('')
+    setFiles([])
+    setResults([])
     setErrorMsg('')
     setState('idle')
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -197,6 +271,7 @@ export default function ConvertPage() {
   const initials      = user?.email?.[0]?.toUpperCase() ?? 'U'
   const atLimit       = !isPro && conversions >= FREE_LIMIT
   const remaining     = FREE_LIMIT - conversions
+  const successCount  = results.filter(r => r.markdown).length
 
   if (authLoading) return (
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#FAFAF8'}}>
@@ -274,7 +349,7 @@ export default function ConvertPage() {
           {/* Header */}
           <div style={{marginBottom:20}}>
             <div style={{fontFamily:'var(--font-heading)',fontSize:24,fontWeight:400,color:'#1A1A1A',lineHeight:1}}>Convert to Markdown</div>
-            <div style={{fontSize:11,color:'#6B6B6B',marginTop:3}}>PDF, DOCX, PPTX, TXT, and 40+ code formats → clean Markdown, ready for Claude</div>
+            <div style={{fontSize:11,color:'#6B6B6B',marginTop:3}}>PDF, DOCX, PPTX, TXT, and 40+ code formats → clean Markdown, ready for Claude. Up to {MAX_FILES} files at once.</div>
           </div>
 
           {/* Free tier counter */}
@@ -309,48 +384,61 @@ export default function ConvertPage() {
                 onDrop={onDrop}
                 onDragOver={onDragOver}
                 onDragLeave={onDragLeave}
-                onClick={() => !file && fileInputRef.current?.click()}
+                onClick={() => files.length === 0 && fileInputRef.current?.click()}
                 style={{
-                  border: `2px dashed ${isDragging ? '#5170FF' : file ? '#2DC07A' : '#E2E2DC'}`,
+                  border: `2px dashed ${isDragging ? '#5170FF' : files.length > 0 ? '#2DC07A' : '#E2E2DC'}`,
                   borderRadius:12,
-                  padding: '36px 24px',
+                  padding: '28px 24px',
                   textAlign:'center',
-                  cursor: file ? 'default' : 'pointer',
-                  background: isDragging ? '#EEF0FF' : file ? '#F0FBF6' : '#FFFFFF',
+                  cursor: files.length > 0 ? 'default' : 'pointer',
+                  background: isDragging ? '#EEF0FF' : files.length > 0 ? '#F0FBF6' : '#FFFFFF',
                   transition:'all .2s',
                 }}>
                 <input
                   ref={fileInputRef}
                   type="file"
+                  multiple
                   accept=".pdf,.docx,.pptx,.txt,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.cs,.go,.rs,.rb,.php,.swift,.kt,.sh,.sql,.html,.css,.json,.yaml,.yml,.md,.vue,.svelte,.dart,.lua,.xml,.toml"
                   style={{display:'none'}}
-                  onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f) }}
+                  onChange={e => {
+                    const picked = Array.from(e.target.files ?? [])
+                    if (picked.length === 0) return
+                    if (files.length === 0) pickFiles(picked)
+                    else addFiles(picked)
+                  }}
                 />
 
-                {!file ? (
+                {files.length === 0 ? (
                   <>
                     <div style={{fontSize:32,marginBottom:10}}>📂</div>
                     <div style={{fontFamily:'var(--font-heading)',fontSize:17,fontWeight:400,color:'#1A1A1A',marginBottom:5}}>
-                      {isDragging ? 'Drop it here' : 'Drop a file or click to browse'}
+                      {isDragging ? 'Drop it here' : 'Drop files or click to browse'}
                     </div>
-                    <div style={{fontSize:12,color:'#ADADAD'}}>PDF · DOCX · PPTX · TXT · Code files · max 50 MB</div>
+                    <div style={{fontSize:12,color:'#ADADAD'}}>PDF · DOCX · PPTX · TXT · Code files · max 50 MB each · up to {MAX_FILES} files</div>
                   </>
                 ) : (
-                  <div style={{display:'flex',alignItems:'center',gap:12,justifyContent:'center'}}>
-                    <div style={{fontSize:28}}>{
-                      getExt(file.name) === '.pdf'  ? '📕' :
-                      getExt(file.name) === '.docx' ? '📘' :
-                      getExt(file.name) === '.pptx' ? '📙' : '📄'
-                    }</div>
-                    <div style={{textAlign:'left'}}>
-                      <div style={{fontSize:13,fontWeight:600,color:'#1A1A1A'}}>{file.name}</div>
-                      <div style={{fontSize:11,color:'#6B6B6B'}}>{formatBytes(file.size)}</div>
-                    </div>
-                    <button onClick={e => { e.stopPropagation(); handleReset() }} style={{
-                      marginLeft:'auto',background:'#F2F2EF',border:'none',borderRadius:6,
-                      width:24,height:24,cursor:'pointer',fontSize:13,color:'#6B6B6B',
-                      display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,
-                    }}>×</button>
+                  <div style={{display:'flex',flexDirection:'column',gap:8}} onClick={e => e.stopPropagation()}>
+                    {files.map((f, i) => (
+                      <div key={`${f.name}-${i}`} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:8,textAlign:'left'}}>
+                        <div style={{fontSize:20,flexShrink:0}}>{iconFor(f.name)}</div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:12,fontWeight:600,color:'#1A1A1A',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.name}</div>
+                          <div style={{fontSize:10,color:'#6B6B6B'}}>{formatBytes(f.size)}</div>
+                        </div>
+                        <button onClick={() => removeFile(i)} style={{
+                          background:'#F2F2EF',border:'none',borderRadius:6,
+                          width:22,height:22,cursor:'pointer',fontSize:12,color:'#6B6B6B',
+                          display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,
+                        }}>×</button>
+                      </div>
+                    ))}
+                    {files.length < MAX_FILES && (
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        style={{fontSize:11,color:'#5170FF',background:'none',border:'1px dashed #5170FF',borderRadius:8,padding:'7px 0',cursor:'pointer'}}>
+                        + Add another file ({files.length}/{MAX_FILES})
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -362,15 +450,15 @@ export default function ConvertPage() {
                 </div>
               )}
 
-              {/* Convert button */}
+              {/* Convert button — fixed: "Convert another" now resets instead of re-running on stale file state */}
               <button
-                onClick={handleConvert}
-                disabled={!file || state === 'converting' || atLimit}
+                onClick={state === 'done' ? handleReset : handleConvert}
+                disabled={state === 'converting' || (state !== 'done' && (files.length === 0 || atLimit))}
                 style={{
                   width:'100%',padding:'12px 0',borderRadius:10,border:'none',
                   fontFamily:'Inter,sans-serif',fontSize:13,fontWeight:700,cursor:'pointer',
-                  background: (!file || atLimit) ? '#F2F2EF' : '#1A1A1A',
-                  color: (!file || atLimit) ? '#ADADAD' : '#FFFFFF',
+                  background: (state !== 'done' && (files.length === 0 || atLimit)) ? '#F2F2EF' : '#1A1A1A',
+                  color: (state !== 'done' && (files.length === 0 || atLimit)) ? '#ADADAD' : '#FFFFFF',
                   transition:'all .18s',
                   opacity: state === 'converting' ? 0.7 : 1,
                   display:'flex',alignItems:'center',justifyContent:'center',gap:8,
@@ -380,17 +468,17 @@ export default function ConvertPage() {
                     <span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'white',borderRadius:'50%',display:'inline-block',animation:'spin .7s linear infinite'}}/>
                     Converting…
                   </>
-                ) : state === 'done' ? '↺ Convert another' : 'Convert to Markdown'}
+                ) : state === 'done' ? '↺ Convert another batch' : `Convert ${files.length > 1 ? `${files.length} files` : 'to Markdown'}`}
               </button>
 
-              {/* Action buttons — only shown after successful conversion */}
-              {state === 'done' && (
+              {/* Combined action buttons — only shown after successful conversion */}
+              {state === 'done' && successCount > 0 && (
                 <div style={{display:'flex',gap:8}}>
-                  <button onClick={handleDownload} style={btnStyle('#5170FF','white')}>
-                    ↓ Download .md
+                  <button onClick={handleDownloadAll} style={btnStyle('#5170FF','white')}>
+                    ↓ Download all
                   </button>
-                  <button onClick={handleCopy} style={btnStyle(copied?'#2DC07A':'#F2F2EF', copied?'white':'#1A1A1A')}>
-                    {copied ? '✔ Copied' : '⎘ Copy'}
+                  <button onClick={handleCopyAll} style={btnStyle(copiedIndex==='all'?'#2DC07A':'#F2F2EF', copiedIndex==='all'?'white':'#1A1A1A')}>
+                    {copiedIndex==='all' ? '✔ Copied' : '⎘ Copy all'}
                   </button>
                   <button onClick={handleOpenInClaude} style={btnStyle('#F2F2EF','#1A1A1A')}>
                     ✦ Open in Claude
@@ -399,11 +487,11 @@ export default function ConvertPage() {
               )}
 
               {/* How it works */}
-              {state === 'idle' && !file && (
+              {state === 'idle' && files.length === 0 && (
                 <div style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:10,padding:14}}>
                   <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#ADADAD',marginBottom:10}}>How it works</div>
                   {[
-                    ['📂','Drop your file','PDF, DOCX, PPTX, or TXT'],
+                    ['📂','Drop up to 5 files','PDF, DOCX, PPTX, TXT, or code'],
                     ['⚡','Instant conversion','Runs on Supabase Edge, no data stored'],
                     ['✦','Open in Claude','Markdown copied to clipboard automatically'],
                   ].map(([icon,title,sub]) => (
@@ -419,22 +507,41 @@ export default function ConvertPage() {
               )}
             </div>
 
-            {/* Right column — markdown preview */}
+            {/* Right column — per-file markdown results */}
             {state === 'done' && (
-              <div style={{display:'flex',flexDirection:'column',gap:0,background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,overflow:'hidden'}}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 14px',borderBottom:'1px solid #E2E2DC',background:'#F2F2EF'}}>
-                  <span style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#6B6B6B'}}>Markdown Preview</span>
-                  <span style={{fontSize:10,color:'#ADADAD'}}>{markdown.length.toLocaleString()} chars</span>
-                </div>
-                <pre style={{
-                  flex:1,margin:0,padding:14,
-                  fontFamily:'\'Courier New\', Courier, monospace',
-                  fontSize:11,lineHeight:1.7,color:'#1A1A1A',
-                  overflowY:'auto',whiteSpace:'pre-wrap',wordBreak:'break-word',
-                  maxHeight:'60vh',
-                }}>
-                  {markdown}
-                </pre>
+              <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                {results.map((r, i) => (
+                  <div key={`${r.filename}-${i}`} style={{display:'flex',flexDirection:'column',background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,overflow:'hidden'}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 14px',borderBottom:'1px solid #E2E2DC',background: r.error ? '#FDECEC' : '#F2F2EF'}}>
+                      <span style={{fontSize:11,fontWeight:700,color: r.error ? '#E83C3C' : '#1A1A1A',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.filename}</span>
+                      {!r.error && <span style={{fontSize:10,color:'#ADADAD',flexShrink:0,marginLeft:8}}>{(r.markdown?.length ?? 0).toLocaleString()} chars</span>}
+                    </div>
+
+                    {r.error ? (
+                      <div style={{padding:14,fontSize:12,color:'#E83C3C'}}>{r.error}</div>
+                    ) : (
+                      <>
+                        <pre style={{
+                          margin:0,padding:14,
+                          fontFamily:'\'Courier New\', Courier, monospace',
+                          fontSize:11,lineHeight:1.7,color:'#1A1A1A',
+                          overflowY:'auto',whiteSpace:'pre-wrap',wordBreak:'break-word',
+                          maxHeight:'40vh',
+                        }}>
+                          {r.markdown}
+                        </pre>
+                        <div style={{display:'flex',gap:8,padding:'8px 14px',borderTop:'1px solid #E2E2DC'}}>
+                          <button onClick={() => handleCopyOne(i)} style={btnStyle(copiedIndex===i?'#2DC07A':'#F2F2EF', copiedIndex===i?'white':'#1A1A1A')}>
+                            {copiedIndex===i ? '✔ Copied' : '⎘ Copy'}
+                          </button>
+                          <button onClick={() => handleDownloadOne(r)} style={btnStyle('#5170FF','white')}>
+                            ↓ Download .md
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
