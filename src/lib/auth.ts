@@ -1,21 +1,20 @@
 // src/lib/auth.ts
 // All authentication logic lives here.
 // Components call these functions — they never call supabase.auth directly.
-// This keeps auth logic in one place and easy to change.
 
 import { supabase } from './supabase'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 export type AuthResult =
   | { success: true; userId: string; email: string }
   | { success: false; error: string }
 
-// ─── Sign Up ──────────────────────────────────────────────────────────────────
+export type SimpleResult =
+  | { success: true }
+  | { success: false; error: string }
 
-// Creates a new account.
-// Email confirmation is OFF in Supabase dashboard — user is logged in immediately.
-// The on_auth_user_created trigger auto-creates user_settings + extension_health rows.
+// Creates a new account. Email confirmation is OFF in Supabase dashboard —
+// user is logged in immediately. The on_auth_user_created trigger
+// auto-creates user_settings + extension_health rows.
 export async function signUp(email: string, password: string): Promise<AuthResult> {
   const { data, error } = await supabase.auth.signUp({ email, password })
 
@@ -23,7 +22,6 @@ export async function signUp(email: string, password: string): Promise<AuthResul
     return { success: false, error: error.message }
   }
 
-  // signUp returns a session immediately because email confirmation is disabled
   if (!data.user) {
     return { success: false, error: 'Sign up failed. Please try again.' }
   }
@@ -35,10 +33,7 @@ export async function signUp(email: string, password: string): Promise<AuthResul
   }
 }
 
-// ─── Sign In ──────────────────────────────────────────────────────────────────
-
 // Signs in with email + password.
-// Returns the user's ID and email on success.
 export async function signIn(email: string, password: string): Promise<AuthResult> {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
@@ -57,8 +52,6 @@ export async function signIn(email: string, password: string): Promise<AuthResul
   }
 }
 
-// ─── Sign Out ─────────────────────────────────────────────────────────────────
-
 // Signs the user out. Clears the Supabase session from localStorage.
 export async function signOut(): Promise<{ success: boolean; error?: string }> {
   const { error } = await supabase.auth.signOut()
@@ -70,10 +63,7 @@ export async function signOut(): Promise<{ success: boolean; error?: string }> {
   return { success: true }
 }
 
-// ─── Get Session ──────────────────────────────────────────────────────────────
-
 // Returns the current session, or null if the user is not logged in.
-// Call this in protected pages to check if the user is authenticated.
 export async function getSession() {
   const { data, error } = await supabase.auth.getSession()
 
@@ -84,8 +74,6 @@ export async function getSession() {
   return data.session
 }
 
-// ─── Get User ─────────────────────────────────────────────────────────────────
-
 // Returns the currently logged-in user, or null.
 export async function getUser() {
   const { data, error } = await supabase.auth.getUser()
@@ -95,4 +83,38 @@ export async function getUser() {
   }
 
   return data.user
+}
+
+// Sends a password-reset email via Supabase. The link in that email
+// redirects to redirectTo, which must be added to Supabase's Auth →
+// URL Configuration → Redirect URLs allow-list or the redirect is
+// rejected. Supabase returns success even for unregistered emails
+// (avoids leaking which emails have accounts) — callers should show a
+// generic "if an account exists" message rather than confirming the
+// email was found.
+export async function requestPasswordReset(email: string): Promise<SimpleResult> {
+  const redirectTo = `${window.location.origin}/reset-password`
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+
+  if (error) {
+    return { success: false, error: error.message }
+  }
+
+  return { success: true }
+}
+
+// Sets a new password for the user. Only works when called from the
+// /reset-password page after following the emailed link — that link
+// puts a temporary recovery session in the URL, which the Supabase
+// client picks up automatically (detectSessionInUrl is on by default),
+// and this call operates against that session.
+export async function updatePassword(newPassword: string): Promise<SimpleResult> {
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
+
+  if (error) {
+    return { success: false, error: error.message }
+  }
+
+  return { success: true }
 }

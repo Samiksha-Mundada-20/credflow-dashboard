@@ -1,38 +1,34 @@
-// src/app/login/page.tsx
-// Login page. Route: /login
+// src/app/forgot-password/page.tsx
+// Route: /forgot-password
 //
 // Flow:
-// 1. User enters email + password
-// 2. We call signIn() from lib/auth.ts
-// 3. On success → redirect to /dashboard
-// 4. On error → show error message in the form (never in an alert())
+// 1. User enters their email
+// 2. We call requestPasswordReset() from lib/auth.ts
+// 3. Show a generic success message regardless of whether the email
+//    exists — Supabase itself doesn't reveal this, so we don't either.
 
 'use client'
 
 import React, { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import AuthCard from '@/components/AuthCard'
 import FormField from '@/components/FormField'
 import SubmitButton from '@/components/SubmitButton'
-import { signIn } from '@/lib/auth'
+import { requestPasswordReset } from '@/lib/auth'
 
-export default function LoginPage() {
-  const router = useRouter()
-
+export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+  const [sent, setSent] = useState(false)
 
   function validate(): string | null {
     if (!email.trim()) return 'Email is required.'
     if (!email.includes('@')) return 'Enter a valid email address.'
-    if (!password) return 'Password is required.'
     return null
   }
 
-  async function handleSignIn() {
+  async function handleSubmit() {
     setErrorMessage('')
 
     const validationError = validate()
@@ -42,35 +38,42 @@ export default function LoginPage() {
     }
 
     setLoading(true)
-
-    const result = await signIn(email, password)
-
+    const result = await requestPasswordReset(email)
     setLoading(false)
 
     if (!result.success) {
-      // Supabase returns "Invalid login credentials" for wrong email/password.
-      // We show it as-is — it's already user-friendly.
       setErrorMessage(result.error)
       return
     }
 
-    router.push('/dashboard')
+    setSent(true)
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') handleSignIn()
+    if (e.key === 'Enter') handleSubmit()
+  }
+
+  if (sent) {
+    return (
+      <AuthCard title="Check your email" subtitle="">
+        <p style={styles.confirmation}>
+          If an account exists for <strong>{email}</strong>, we&apos;ve sent a
+          password reset link. Click the link in that email to set a new
+          password.
+        </p>
+        <p style={styles.switchLink}>
+          <Link href="/login">Back to login</Link>
+        </p>
+      </AuthCard>
+    )
   }
 
   return (
     <AuthCard
-      title="Welcome back"
-      subtitle="Sign in to your CredFlow account"
+      title="Reset your password"
+      subtitle="Enter your email and we'll send you a reset link"
     >
-      {errorMessage && (
-        <div style={styles.formError}>
-          {errorMessage}
-        </div>
-      )}
+      {errorMessage && <div style={styles.formError}>{errorMessage}</div>}
 
       <div onKeyDown={handleKeyDown}>
         <FormField
@@ -83,33 +86,17 @@ export default function LoginPage() {
           disabled={loading}
           autoComplete="email"
         />
-
-        <FormField
-          id="password"
-          label="Password"
-          type="password"
-          value={password}
-          onChange={setPassword}
-          placeholder="••••••••"
-          disabled={loading}
-          autoComplete="current-password"
-        />
       </div>
 
-      <p style={styles.forgotLink}>
-        <Link href="/forgot-password">Forgot password?</Link>
-      </p>
-
       <SubmitButton
-        label="Sign in"
-        loadingLabel="Signing in…"
+        label="Send reset link"
+        loadingLabel="Sending…"
         loading={loading}
-        onClick={handleSignIn}
+        onClick={handleSubmit}
       />
 
       <p style={styles.switchLink}>
-        Don&apos;t have an account?{' '}
-        <Link href="/signup">Create one</Link>
+        <Link href="/login">Back to login</Link>
       </p>
     </AuthCard>
   )
@@ -125,11 +112,11 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--red)',
     marginBottom: '20px',
   },
-  forgotLink: {
-    textAlign: 'right',
-    fontSize: '12px',
-    marginBottom: '16px',
-    marginTop: '-8px',
+  confirmation: {
+    fontSize: '14px',
+    color: 'var(--text-primary)',
+    lineHeight: 1.6,
+    marginBottom: '24px',
   },
   switchLink: {
     marginTop: '20px',
