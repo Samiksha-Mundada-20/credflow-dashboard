@@ -70,8 +70,9 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
       .from('usage_snapshots')
       .select('*')
       .eq('user_id', userId)
-      .eq('platform', 'claude')
+      .ilike('platform', '%claude%')
       .order('captured_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(1),
 
     // Last 7 days of Claude snapshots for the chart
@@ -79,9 +80,10 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
       .from('usage_snapshots')
       .select('*')
       .eq('user_id', userId)
-      .eq('platform', 'claude')
+      .ilike('platform', '%claude%')
       .gte('captured_at', sevenDaysAgo)
       .order('captured_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(50),
 
     // User settings
@@ -96,8 +98,9 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
       .from('usage_snapshots')
       .select('*')
       .eq('user_id', userId)
-      .eq('platform', 'chatgpt')
+      .ilike('platform', '%chatgpt%')
       .order('captured_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(1),
 
     // Last 7 days of ChatGPT snapshots
@@ -105,16 +108,29 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
       .from('usage_snapshots')
       .select('*')
       .eq('user_id', userId)
-      .eq('platform', 'chatgpt')
+      .ilike('platform', '%chatgpt%')
       .gte('captured_at', sevenDaysAgo)
       .order('captured_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(50),
   ])
+
+  // Fallback: if no specific claude match, fetch latest snapshot for user
+  let latestSnapshot = snapshotResult.data?.[0] ?? null
+  if (!latestSnapshot) {
+    const fallback = await supabase
+      .from('usage_snapshots')
+      .select('*')
+      .eq('user_id', userId)
+      .order('captured_at', { ascending: false })
+      .limit(1)
+    latestSnapshot = fallback.data?.[0] ?? null
+  }
 
   const settings = settingsResult.data ?? null
 
   return {
-    latestSnapshot:        snapshotResult.data?.[0]       ?? null,
+    latestSnapshot:        latestSnapshot,
     history:               historyResult.data              ?? [],
     settings,
     plan:                  settings?.plan                  ?? 'free',
@@ -175,10 +191,20 @@ export function onePerDay(snapshots: UsageSnapshot[]): UsageSnapshot[] {
     .slice(-7)
 }
 
-// Seconds until a UTC ISO timestamp. Returns 0 if in the past.
-export function secsUntil(isoTimestamp: string): number {
-  const target = new Date(isoTimestamp).getTime()
-  const now    = Date.now()
+// Seconds until a UTC ISO timestamp or Unix epoch timestamp (seconds or ms). Returns 0 if in the past.
+export function secsUntil(isoTimestamp: string | number | null | undefined): number {
+  if (!isoTimestamp) return 0
+  let target = 0
+  if (typeof isoTimestamp === 'number') {
+    target = isoTimestamp > 2000000000 ? isoTimestamp : isoTimestamp * 1000
+  } else if (typeof isoTimestamp === 'string' && !isNaN(Number(isoTimestamp))) {
+    const num = Number(isoTimestamp)
+    target = num > 2000000000 ? num : num * 1000
+  } else {
+    target = new Date(isoTimestamp).getTime()
+  }
+  if (isNaN(target) || target <= 0) return 0
+  const now = Date.now()
   return Math.max(0, Math.floor((target - now) / 1000))
 }
 

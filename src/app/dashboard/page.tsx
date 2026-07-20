@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { getUser, signOut } from '@/lib/auth'
+import { supabase } from '@/lib/supabase'
 import {
   getDashboardData,
   saveSettings,
@@ -68,6 +69,7 @@ export default function DashboardPage() {
   const [staleLabel,        setStaleLabel]        = useState('')
   // ChatGPT reset countdown — mirrors sessionSecs logic for Claude
   const [chatgptSecs,       setChatgptSecs]       = useState(0)
+  const [chartPlatform,     setChartPlatform]     = useState<'claude' | 'chatgpt'>('claude')
 
   useEffect(() => {
     async function check() {
@@ -78,8 +80,9 @@ export default function DashboardPage() {
     check()
   }, [router])
 
-  const fetchData = useCallback(async (userId: string) => {
-    setDataLoading(true); setDataError(null)
+  const fetchData = useCallback(async (userId: string, isSilent = false) => {
+    if (!isSilent) setDataLoading(true)
+    setDataError(null)
     try {
       const result = await getDashboardData(userId)
       setData(result)
@@ -102,11 +105,55 @@ export default function DashboardPage() {
       if (result.latestChatGPTSnapshot?.session_reset_at) {
         setChatgptSecs(secsUntil(result.latestChatGPTSnapshot.session_reset_at))
       }
-    } catch { setDataError('Could not load data. Check your connection.') }
-    finally { setDataLoading(false) }
+    } catch {
+      if (!isSilent) setDataError('Could not load data. Check your connection.')
+    }
+    finally {
+      if (!isSilent) setDataLoading(false)
+    }
   }, [])
 
-  useEffect(() => { if (!authLoading && user) fetchData(user.id) }, [authLoading, user, fetchData])
+  // Realtime subscription + silent background polling for extension live sync
+  useEffect(() => {
+    if (authLoading || !user) return
+
+    fetchData(user.id, false)
+
+    // 1. Postgres changes listener + Broadcast listener
+    const channel = supabase
+      .channel(`credflow-sync-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'usage_snapshots',
+        },
+        (payload) => {
+          if (!payload.new || (payload.new as { user_id?: string }).user_id === user.id) {
+            fetchData(user.id, true)
+          }
+        }
+      )
+      .on(
+        'broadcast',
+        { event: 'snapshot-updated' },
+        () => {
+          fetchData(user.id, true)
+        }
+      )
+      .subscribe()
+
+    // 2. Silent 5-second polling interval to ensure seamless UI sync without flickering
+    const pollInterval = setInterval(() => {
+      fetchData(user.id, true)
+    }, 5000)
+
+    return () => {
+      supabase.removeChannel(channel)
+      clearInterval(pollInterval)
+    }
+  }, [authLoading, user, fetchData])
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -130,33 +177,116 @@ export default function DashboardPage() {
       sync_frequency_minutes:  syncFreq,
     })
     setSavingSettings(false)
-    if (result.success) { setSettingsSaved(true); setTimeout(() => setSettingsSaved(false), 2500) }
+    if (result.success) {
+      setSettingsSaved(true)
+      setTimeout(() => setSettingsSaved(false), 3000)
+    } else {
+      alert(result.error ?? 'Could not save settings.')
+    }
   }
 
   async function handleSignOut() {
     setSigningOut(true); await signOut(); router.replace('/login')
   }
 
+  const [clearingHistory, setClearingHistory] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
+
+  async function handleClearHistory() {
+    if (!user) return
+    if (!window.confirm('Are you sure you want to clear all your tracking history?')) return
+    setClearingHistory(true)
+    try {
+      await supabase.from('usage_snapshots').delete().eq('user_id', user.id)
+      fetchData(user.id, true)
+      alert('Tracking history cleared.')
+    } catch {
+      alert('Could not clear history. Please try again.')
+    } finally {
+      setClearingHistory(false)
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (!user) return
+    if (!window.confirm('Are you sure you want to delete your CredFlow account? This action cannot be undone.')) return
+    setDeletingAccount(true)
+    try {
+      await supabase.from('usage_snapshots').delete().eq('user_id', user.id)
+      await supabase.from('user_settings').delete().eq('user_id', user.id)
+      await signOut()
+      router.replace('/login')
+    } catch {
+      alert('Could not delete account. Please try again.')
+      setDeletingAccount(false)
+    }
+  }
+
   const initials = user?.email?.[0]?.toUpperCase() ?? 'U'
   const isPro    = data?.settings?.plan === 'pro'
 
-  const chartDays: Array<{ label: string; h: number; today: boolean }> = (() => {
-    if (!data?.history.length) return []
-    return onePerDay(data.history).map(snap => ({
-      label: isToday(snap.captured_at) ? 'Today' : dayLabel(snap.captured_at),
-      h:     Math.max(pctInt(snap.session_utilization), 24),
-      today: isToday(snap.captured_at),
-    }))
+  const chartDays: Array<{ label: string; h: number; today: boolean; val: number }> = (() => {
+    const snapshotsByDay = new Map<string, UsageSnapshot>()
+    const targetHistory = chartPlatform === 'chatgpt' ? (data?.chatgptHistory ?? []) : (data?.history ?? [])
+    if (targetHistory.length) {
+      for (const snap of onePerDay(targetHistory)) {
+        const dStr = new Date(snap.captured_at).toISOString().slice(0, 10)
+        snapshotsByDay.set(dStr, snap)
+      }
+    }
+
+    const days: Array<{ label: string; h: number; today: boolean; val: number }> = []
+    const now = new Date()
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(now.getDate() - i)
+      const dateStr = d.toISOString().slice(0, 10)
+      const isTod = i === 0
+      const label = isTod ? 'Today' : dayLabel(d.toISOString())
+      const snap = snapshotsByDay.get(dateStr)
+      const val = snap ? pctInt(snap.session_utilization) : 0
+
+      days.push({
+        label,
+        h: val,
+        today: isTod,
+        val,
+      })
+    }
+
+    return days
   })()
 
   const snap: UsageSnapshot | null = data?.latestSnapshot ?? null
-  const sessionPct = snap ? pctInt(snap.session_utilization) : null
+  const sessionResetExpired = snap?.session_reset_at
+    ? secsUntil(snap.session_reset_at) === 0
+    : false
+  const sessionPct = snap ? (sessionResetExpired ? 0 : pctInt(snap.session_utilization)) : null
   const weeklyPct  = snap ? pctInt(snap.weekly_utilization)  : null
 
   // ChatGPT derived values
   const chatgptSnap: UsageSnapshot | null = data?.latestChatGPTSnapshot ?? null
-  const chatgptPct = chatgptSnap ? pctInt(chatgptSnap.session_utilization) : null
+  const chatgptResetExpired = chatgptSnap?.session_reset_at
+    ? secsUntil(chatgptSnap.session_reset_at) === 0
+    : false
+  const chatgptPct = chatgptSnap ? (chatgptResetExpired ? 0 : pctInt(chatgptSnap.session_utilization)) : null
   const chatgptStale = chatgptSnap ? staleness(chatgptSnap.captured_at) : null
+
+  const rawUtil = chatgptSnap?.session_utilization ?? 0
+  let estimatedLimit = 10
+  if (rawUtil > 0) {
+    for (const testLimit of [25, 10, 80, 160, 15, 40]) {
+      const testCount = Math.round(rawUtil * testLimit)
+      if (Math.abs((testCount / testLimit) - rawUtil) < 0.025) {
+        estimatedLimit = testLimit
+        break
+      }
+    }
+  }
+  const chatgptLimit = estimatedLimit
+  const chatgptUsedMsgs = chatgptSnap && !chatgptResetExpired ? Math.round(rawUtil * chatgptLimit) : 0
+  const chatgptMsgsLeft = Math.max(0, chatgptLimit - chatgptUsedMsgs)
 
   if (authLoading) return (
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#FAFAF8'}}>
@@ -174,21 +304,28 @@ export default function DashboardPage() {
           <span style={{fontFamily:'var(--font-heading)',fontSize:16,fontWeight:500,color:'#1A1A1A',letterSpacing:'-0.3px'}}>CredFlow</span>
         </div>
         <div style={{display:'flex',flex:1}}>
-          {(['usage','settings'] as Tab[]).map(t => (
-            <button key={t} onClick={() => setActiveTab(t)} style={{
-              padding:'0 14px',height:54,display:'flex',alignItems:'center',fontSize:12,fontWeight:500,
-              cursor:'pointer',background:'transparent',border:'none',fontFamily:'Inter,sans-serif',
-              color: activeTab===t ? '#1A1A1A' : '#6B6B6B',
-              borderBottom: activeTab===t ? '2px solid #FFCC00' : '2px solid transparent',
-              position:'relative',top:1,transition:'all .18s',textTransform:'capitalize',
-            }}>{t}</button>
-          ))}
+          <button onClick={() => setActiveTab('usage')} style={{
+            padding:'0 14px',height:54,display:'flex',alignItems:'center',fontSize:12,fontWeight:500,
+            cursor:'pointer',background:'transparent',border:'none',fontFamily:'Inter,sans-serif',
+            color: activeTab==='usage' ? '#1A1A1A' : '#6B6B6B',
+            borderBottom: activeTab==='usage' ? '2px solid #FFCC00' : '2px solid transparent',
+            position:'relative',top:1,transition:'all .18s',
+          }}>Usage</button>
+
           <a href="/convert" style={{
             padding:'0 14px',height:54,display:'flex',alignItems:'center',fontSize:12,fontWeight:500,
             cursor:'pointer',background:'transparent',border:'none',fontFamily:'Inter,sans-serif',
             color:'#6B6B6B',borderBottom:'2px solid transparent',
-            position:'relative',top:1,textDecoration:'none',
+            position:'relative',top:1,textDecoration:'none',transition:'all .18s',
           }}>Convert</a>
+
+          <button onClick={() => setActiveTab('settings')} style={{
+            padding:'0 14px',height:54,display:'flex',alignItems:'center',fontSize:12,fontWeight:500,
+            cursor:'pointer',background:'transparent',border:'none',fontFamily:'Inter,sans-serif',
+            color: activeTab==='settings' ? '#1A1A1A' : '#6B6B6B',
+            borderBottom: activeTab==='settings' ? '2px solid #FFCC00' : '2px solid transparent',
+            position:'relative',top:1,transition:'all .18s',
+          }}>Settings</button>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:9}}>
           <button onClick={() => user && fetchData(user.id)} disabled={dataLoading} title="Refresh" style={{width:28,height:28,borderRadius:8,background:'#F2F2EF',border:'none',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',opacity:dataLoading?0.5:1}}>
@@ -208,39 +345,6 @@ export default function DashboardPage() {
 
       {/* BODY */}
       <div style={{display:'flex',flex:1,overflow:'hidden',minHeight:0}}>
-
-        {/* Sidebar */}
-        <div style={{width:180,background:'#FFFFFF',borderRight:'1px solid #E2E2DC',padding:'12px 10px',display:'flex',flexDirection:'column',gap:3,flexShrink:0}}>
-          {([
-            {id:'usage'    as Tab, icon:'📈', activeBg:'#FFFBE8', activeBorder:'#FFF0A0'},
-            {id:'settings' as Tab, icon:'⚙️', activeBg:'#F2F2EF', activeBorder:'#E2E2DC'},
-          ]).map(item => (
-            <button key={item.id} onClick={() => setActiveTab(item.id)} style={{
-              display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,
-              fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'Inter,sans-serif',
-              color: activeTab===item.id ? '#1A1A1A' : '#6B6B6B',
-              background: activeTab===item.id ? item.activeBg : 'transparent',
-              border: activeTab===item.id ? `1px solid ${item.activeBorder}` : '1px solid transparent',
-              transition:'all .15s',textTransform:'capitalize',
-            }}>
-              <span style={{width:18,height:18,borderRadius:4,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,background:item.activeBg,flexShrink:0}}>{item.icon}</span>
-              {item.id}
-            </button>
-          ))}
-          <a href="/convert" style={{
-            display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,
-            fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'Inter,sans-serif',
-            color:'#6B6B6B',background:'transparent',border:'1px solid transparent',
-            textDecoration:'none',transition:'all .15s',
-          }}>
-            <span style={{width:18,height:18,borderRadius:4,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,background:'#F2F2EF',flexShrink:0}}>📄</span>
-            Convert
-          </a>
-          <button style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,fontSize:12,color:'#6B6B6B',fontWeight:500,cursor:'pointer',border:'1px solid transparent',background:'transparent',marginTop:'auto',fontFamily:'Inter,sans-serif'}}>
-            <span style={{width:18,height:18,borderRadius:4,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,background:'#F2F2EF',flexShrink:0}}>?</span>
-            Help
-          </button>
-        </div>
 
         {/* Main */}
         <div style={{flex:1,overflowY:'auto'}}>
@@ -394,104 +498,13 @@ export default function DashboardPage() {
                     </div>
                   )}
 
-                  {/* ── ChatGPT section ─────────────────────────────────────────────────
-                      Pro users see full data.
-                      Free users see the section but with a lock overlay — same pattern
-                      as the 7-day history chart.
-                  ──────────────────────────────────────────────────────────────────── */}
-                  <div style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,overflow:'hidden'}}>
-
-                    {/* Section header */}
-                    <div style={{display:'flex',alignItems:'center',gap:8,padding:'12px 16px',borderBottom:'1px solid #E2E2DC',background:'#F2F2EF'}}>
-                      <img src="https://www.google.com/s2/favicons?sz=32&domain=chatgpt.com" width={14} height={14} style={{borderRadius:3,flexShrink:0}} alt=""/>
-                      <span style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#6B6B6B'}}>ChatGPT · Session</span>
-                      {chatgptSnap && chatgptStale && (
-                        <span style={{marginLeft:'auto',fontSize:10,fontWeight:600,color:'#ADADAD'}}>{chatgptStale}</span>
-                      )}
-                      {!isPro && (
-                        <span style={{marginLeft: chatgptSnap ? 8 : 'auto',fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#ADADAD',background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:999,padding:'2px 9px'}}>Pro</span>
-                      )}
-                    </div>
-
-                    {/* Content — relative so lock overlay can sit on top */}
-                    <div style={{position:'relative',padding:16}}>
-
-                      {/* No data yet — shown to everyone when no ChatGPT snapshot exists */}
-                      {!chatgptSnap && (
-                        <div style={{textAlign:'center',padding:'20px 0'}}>
-                          <div style={{fontSize:11,color:'#ADADAD',lineHeight:1.6}}>
-                            No data yet — open ChatGPT with the extension active to start tracking.
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Data — shown when a ChatGPT snapshot exists */}
-                      {chatgptSnap && (
-                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-
-                          {/* ChatGPT session utilization card */}
-                          <div style={{background:'#F2F2EF',borderRadius:10,padding:14}}>
-                            <div style={{fontSize:9,textTransform:'uppercase',letterSpacing:'.9px',color:'#ADADAD',fontWeight:700,marginBottom:5}}>Session Used</div>
-                            <div style={{fontFamily:'var(--font-heading)',fontSize:28,fontWeight:400,lineHeight:1,marginBottom:9,
-                              color: chatgptPct!>=95?'#E83C3C':chatgptPct!>=80?'#F5941F':'#2DC07A'
-                            }}>
-                              {chatgptPct}%
-                            </div>
-                            <div style={{width:'100%',height:4,background:'#E2E2DC',borderRadius:999,overflow:'hidden',marginBottom:8}}>
-                              <div style={{height:'100%',borderRadius:999,width:`${chatgptPct}%`,
-                                background: chatgptPct!>=95?'#E83C3C':chatgptPct!>=80?'#F5941F':'#2DC07A'
-                              }}/>
-                            </div>
-                            <div style={{fontSize:10,color:'#6B6B6B'}}>of estimated window limit</div>
-                          </div>
-
-                          {/* ChatGPT reset countdown card */}
-                          <div style={{background:'#F2F2EF',borderRadius:10,padding:14}}>
-                            <div style={{fontSize:9,textTransform:'uppercase',letterSpacing:'.9px',color:'#ADADAD',fontWeight:700,marginBottom:5}}>Window Resets</div>
-                            <div style={{fontFamily:'var(--font-heading)',fontSize:20,fontWeight:400,lineHeight:1.2,marginBottom:5,color:'#1A1A1A',fontVariantNumeric:'tabular-nums'}}>
-                              {chatgptSecs > 0 ? fmtResets(chatgptSecs) : '—'}
-                            </div>
-                            <div style={{fontSize:10,color:'#6B6B6B',marginTop:8}}>
-                              Last synced: {new Date(chatgptSnap.captured_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Lock overlay — free users only */}
-                      {!isPro && (
-                        <div style={{
-                          position:'absolute',inset:0,
-                          backdropFilter:'blur(5px)',
-                          WebkitBackdropFilter:'blur(5px)',
-                          background:'rgba(250,250,248,0.72)',
-                          borderRadius:8,
-                          display:'flex',flexDirection:'column',
-                          alignItems:'center',justifyContent:'center',
-                          gap:10,zIndex:10,
-                          minHeight: chatgptSnap ? 'unset' : 80,
-                        }}>
-                          <div style={{width:36,height:36,borderRadius:'50%',background:'#F2F2EF',border:'1px solid #E2E2DC',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>🔒</div>
-                          <div style={{fontFamily:'var(--font-heading)',fontSize:16,fontWeight:500,color:'#1A1A1A',textAlign:'center'}}>ChatGPT tracking is Pro</div>
-                          <div style={{fontSize:12,color:'#6B6B6B',textAlign:'center',maxWidth:200,lineHeight:1.5}}>Upgrade to see your ChatGPT usage alongside Claude.</div>
-                          <a href="https://credflow.vercel.app/#pricing" target="_blank" rel="noreferrer" style={{
-                            marginTop:4,padding:'8px 20px',
-                            background:'#FFCC00',color:'#1A1A1A',
-                            fontFamily:'Inter,sans-serif',fontSize:12,fontWeight:700,
-                            borderRadius:8,textDecoration:'none',
-                          }}>
-                            Upgrade to Pro — $4/mo
-                          </a>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
                   {/* 7-day bar chart — gated by plan */}
                   {chartDays.length > 0 ? (
                     <div style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,padding:16}}>
                       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:2}}>
-                        <div style={{fontFamily:'var(--font-heading)',fontSize:15,fontWeight:500,color:'#1A1A1A'}}>7-Day Session History · Claude</div>
+                        <div style={{fontFamily:'var(--font-heading)',fontSize:15,fontWeight:500,color:'#1A1A1A'}}>
+                          7-Day Session History
+                        </div>
                         {!isPro && (
                           <span style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#ADADAD',background:'#F2F2EF',border:'1px solid #E2E2DC',borderRadius:999,padding:'2px 9px'}}>Pro</span>
                         )}
@@ -499,19 +512,21 @@ export default function DashboardPage() {
                       <div style={{fontSize:10,color:'#6B6B6B',marginBottom:14}}>Daily peak session utilisation %</div>
 
                       {/* Chart wrapper — relative so overlay sits on top */}
-                      <div style={{position:'relative'}}>
+                      <div style={{position:'relative',minHeight:160}}>
                         <div style={{display:'flex',gap:6,height:130,alignItems:'flex-end'}}>
                           {chartDays.map((bar, idx) => {
                             // Free users: only today's bar shows real data
                             const showReal = isPro || bar.today
-                            const displayH = showReal ? bar.h : 20 + (idx * 10)
+                            const displayH = showReal
+                              ? (bar.val > 0 ? Math.max(Math.round((bar.val / 100) * 85), 14) : 4)
+                              : (15 + (idx * 8))
                             const barBg    = showReal
-                              ? (bar.today ? '#5170FF' : '#C8D0FF')
+                              ? (bar.today ? '#5170FF' : bar.val > 0 ? '#C8D0FF' : '#E2E2DC')
                               : '#E2E2DC'
                             return (
-                              <div key={bar.label} style={{flex:1,height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',gap:4}}>
-                                <span style={{fontSize:9,fontWeight:700,color:showReal?(bar.today?'#5170FF':'#9BAAE8'):'#D0D0D0',fontVariantNumeric:'tabular-nums',flexShrink:0,lineHeight:1}}>
-                                  {showReal ? `${displayH}%` : '—'}
+                              <div key={`${bar.label}-${idx}`} style={{flex:1,height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',gap:4}}>
+                                <span style={{fontSize:9,fontWeight:700,color:showReal?(bar.today?'#5170FF':bar.val>0?'#9BAAE8':'#ADADAD'):'#D0D0D0',fontVariantNumeric:'tabular-nums',flexShrink:0,lineHeight:1}}>
+                                  {showReal ? (bar.val > 0 ? `${bar.val}%` : '0%') : '—'}
                                 </span>
                                 <div style={{width:'100%',flexShrink:0,borderRadius:'4px 4px 0 0',background:barBg,height:`${displayH}px`,opacity:showReal?1:0.45}}/>
                                 <div style={{fontSize:9,color: bar.today ? '#1A1A1A' : '#ADADAD',fontWeight: bar.today ? 700 : 400,flexShrink:0,lineHeight:1}}>{bar.label}</div>
@@ -524,24 +539,23 @@ export default function DashboardPage() {
                         {!isPro && (
                           <div style={{
                             position:'absolute',inset:0,
-                            backdropFilter:'blur(5px)',
-                            WebkitBackdropFilter:'blur(5px)',
-                            background:'rgba(250,250,248,0.72)',
+                            backdropFilter:'blur(6px)',
+                            WebkitBackdropFilter:'blur(6px)',
+                            background:'rgba(250,250,248,0.78)',
                             borderRadius:8,
                             display:'flex',flexDirection:'column',
                             alignItems:'center',justifyContent:'center',
-                            gap:10,zIndex:10,
+                            gap:8,zIndex:10,padding:'16px 20px',
                           }}>
-                            <div style={{width:36,height:36,borderRadius:'50%',background:'#F2F2EF',border:'1px solid #E2E2DC',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>🔒</div>
                             <div style={{fontFamily:'var(--font-heading)',fontSize:16,fontWeight:500,color:'#1A1A1A',textAlign:'center'}}>History is a Pro feature</div>
-                            <div style={{fontSize:12,color:'#6B6B6B',textAlign:'center',maxWidth:200,lineHeight:1.5}}>See your full 30-day trends, ChatGPT tracking and weekly digest.</div>
+                            <div style={{fontSize:12,color:'#6B6B6B',textAlign:'center',maxWidth:240,lineHeight:1.4}}>See your full 30-day trends, ChatGPT tracking and weekly digest.</div>
                             <a href="https://credflow.vercel.app/#pricing" target="_blank" rel="noreferrer" style={{
                               marginTop:4,padding:'8px 20px',
                               background:'#FFCC00',color:'#1A1A1A',
                               fontFamily:'Inter,sans-serif',fontSize:12,fontWeight:700,
                               borderRadius:8,textDecoration:'none',
                             }}>
-                              Upgrade to Pro — $4/mo
+                              Upgrade to Pro — ₹299/mo
                             </a>
                           </div>
                         )}
@@ -551,28 +565,6 @@ export default function DashboardPage() {
                     <div style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,padding:16}}>
                       <div style={{fontFamily:'var(--font-heading)',fontSize:15,fontWeight:500,color:'#1A1A1A',marginBottom:8}}>7-Day Session History · Claude</div>
                       <div style={{fontSize:11,color:'#ADADAD',textAlign:'center',padding:'24px 0'}}>History builds after 2+ days of usage</div>
-                    </div>
-                  )}
-
-                  {/* Upgrade prompt card — free users only */}
-                  {!isPro && (
-                    <div style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,padding:16,display:'flex',alignItems:'center',justifyContent:'space-between',gap:16}}>
-                      <div>
-                        <div style={{fontFamily:'var(--font-heading)',fontSize:15,fontWeight:500,color:'#1A1A1A',marginBottom:4}}>Unlock Pro</div>
-                        <div style={{display:'flex',flexDirection:'column',gap:3}}>
-                          {['📊 30-day usage history','🤖 ChatGPT tracking','📬 Weekly email digest'].map(f => (
-                            <div key={f} style={{fontSize:12,color:'#6B6B6B'}}>{f}</div>
-                          ))}
-                        </div>
-                      </div>
-                      <a href="https://credflow.vercel.app/#pricing" target="_blank" rel="noreferrer" style={{
-                        flexShrink:0,padding:'9px 20px',
-                        background:'#FFCC00',color:'#1A1A1A',
-                        fontFamily:'Inter,sans-serif',fontSize:12,fontWeight:700,
-                        borderRadius:8,textDecoration:'none',whiteSpace:'nowrap',
-                      }}>
-                        Upgrade — $4/mo
-                      </a>
                     </div>
                   )}
                 </>
@@ -605,7 +597,7 @@ export default function DashboardPage() {
                           <img src={`https://www.google.com/s2/favicons?sz=32&domain=${tool.domain}`} width={24} height={24} style={{objectFit:'contain'}} alt=""/>
                         </div>
                         <span style={{fontSize:12,fontWeight:600,color:'#1A1A1A'}}>{tool.name}</span>
-                        <span style={{marginLeft:'auto',fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:999,background:'#F2F2EF',color:'#ADADAD'}}>Phase 2</span>
+                        <span style={{marginLeft:'auto',fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:999,background:'#F2F2EF',color:'#ADADAD'}}>Soon</span>
                       </div>
                       <div style={{fontSize:13,color:'#ADADAD',marginBottom:6}}>Not connected</div>
                       <div style={{width:'100%',height:4,background:'#F2F2EF',borderRadius:999}}/>
@@ -619,78 +611,25 @@ export default function DashboardPage() {
           {/* SETTINGS TAB */}
           {activeTab === 'settings' && (
             <div style={{padding:22,display:'flex',flexDirection:'column',gap:14}}>
-              <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between'}}>
-                <div>
-                  <div style={{fontFamily:'var(--font-heading)',fontSize:24,fontWeight:400,color:'#1A1A1A',lineHeight:1}}>Settings</div>
-                  <div style={{fontSize:11,color:'#6B6B6B',marginTop:3}}>Changes save to your account and sync to the extension</div>
-                </div>
-                <button onClick={handleSaveSettings} disabled={savingSettings} style={{background:settingsSaved?'#2DC07A':'#1A1A1A',color:'white',border:'none',borderRadius:8,padding:'7px 16px',fontFamily:'Inter,sans-serif',fontSize:12,fontWeight:600,cursor:'pointer',transition:'background .2s',opacity:savingSettings?0.7:1}}>
-                  {savingSettings?'Saving…':settingsSaved?'✔ Saved':'Save changes'}
-                </button>
+              <div style={{fontFamily:'var(--font-heading)',fontSize:24,fontWeight:400,color:'#1A1A1A',lineHeight:1,marginBottom:4}}>
+                Settings
               </div>
 
               <SettingsSection title="Account">
-                <SettingsRow label="Email address" sub={user?.email??'—'} last={false}><SmallBtn>Edit</SmallBtn></SettingsRow>
-                <SettingsRow label="Current plan" sub={isPro?'Pro · All features unlocked':'Free · Claude only · Up to 3 subscriptions'} last={false}>
+                <SettingsRow label="Email address" sub={user?.email??'—'} last={false}>{null}</SettingsRow>
+                <SettingsRow label="Current plan" sub={isPro?'Pro · All features unlocked':'Free · Claude only · Up to 3 subscriptions'} last={true}>
                   <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#F2F2EF',borderRadius:999,padding:'3px 9px',fontSize:11,fontWeight:600,color:'#6B6B6B'}}>
                     {isPro?<span style={{color:'#8B5CF6'}}>Pro ✦</span>:<>Free <span style={{color:'#5170FF',cursor:'pointer',fontWeight:600,marginLeft:3}}>Upgrade</span></>}
                   </span>
                 </SettingsRow>
-                <SettingsRow label="Password" sub="Change your account password" last><SmallBtn>Change</SmallBtn></SettingsRow>
               </SettingsSection>
 
-              <SettingsSection title="Claude Usage Alerts">
-                <SettingsRow label="Enable usage alerts" sub="Chrome push notification when you approach your session limit" last={false}>
-                  <Toggle on={sessionThreshold>0} onToggle={() => setSessionThreshold(v => v>0?0:80)}/>
-                </SettingsRow>
-                <SettingsRow label="Session alert threshold" sub={`Notify when Claude session usage reaches ${sessionThreshold}%`} last={false}>
-                  <div style={{display:'flex',alignItems:'center',gap:6}}>
-                    <input type="range" min={50} max={99} value={sessionThreshold} onChange={e => setSessionThreshold(Number(e.target.value))} style={{width:80,accentColor:'#5170FF'}}/>
-                    <span style={{fontSize:11,fontWeight:600,color:'#1A1A1A',minWidth:32}}>{sessionThreshold}%</span>
-                  </div>
-                </SettingsRow>
-                <SettingsRow label="Second alert at 95%" sub="Send a follow-up alert when you're almost out" last={false}>
-                  <Toggle on={secondAlert} onToggle={() => setSecondAlert(v => !v)}/>
-                </SettingsRow>
-                <SettingsRow label="Weekly alert threshold" sub={`Notify when weekly Claude usage reaches ${weeklyThreshold}%`} last>
-                  <div style={{display:'flex',alignItems:'center',gap:6}}>
-                    <input type="range" min={50} max={99} value={weeklyThreshold} onChange={e => setWeeklyThreshold(Number(e.target.value))} style={{width:80,accentColor:'#F5941F'}}/>
-                    <span style={{fontSize:11,fontWeight:600,color:'#1A1A1A',minWidth:32}}>{weeklyThreshold}%</span>
-                  </div>
-                </SettingsRow>
-              </SettingsSection>
-
-              <SettingsSection title="Subscription Reminders">
-                <SettingsRow label="Enable payment reminders" sub="Chrome notification before subscription renewals" last={false}>
-                  <Toggle on={reminders} onToggle={() => setReminders(v => !v)}/>
-                </SettingsRow>
-                <SettingsRow label="Default reminder time" sub="When to notify before renewal" last>
-                  <select style={S.select} defaultValue="1"><option value="1">Day before</option><option value="0">Same day</option><option value="2">2 days before</option></select>
-                </SettingsRow>
-              </SettingsSection>
-
-              <SettingsSection title="Extension">
-                <SettingsRow label="Show injected bar in Claude" sub="Display CredFlow usage bar below the composer in claude.ai" last={false}>
-                  <Toggle on={injectedBar} onToggle={() => setInjectedBar(v => !v)}/>
-                </SettingsRow>
-                <SettingsRow label="Background sync frequency" sub="How often the extension syncs usage data to your account" last={false}>
-                  <select style={S.select} value={syncFreq} onChange={e => setSyncFreq(Number(e.target.value))}>
-                    <option value={1}>Every message</option>
-                    <option value={5}>Every 5 minutes</option>
-                    <option value={10}>Every 10 minutes</option>
-                  </select>
-                </SettingsRow>
-                <SettingsRow label="Data retention" sub={isPro?'Pro tier: 1 year history kept':'Free tier: 7 days history kept'} last>
-                  <select style={S.select} disabled><option>{isPro?'1 year (Pro)':'7 days (Free)'}</option></select>
-                </SettingsRow>
-              </SettingsSection>
-
-              <SettingsSection title="Danger Zone">
+              <SettingsSection title="">
                 <SettingsRow label="Clear all usage history" sub="Permanently delete your Claude tracking history from CredFlow" last={false}>
-                  <button style={S.dangerBtn}>Clear history</button>
+                  <button onClick={handleClearHistory} disabled={clearingHistory} style={S.dangerBtn}>{clearingHistory ? 'Clearing...' : 'Clear history'}</button>
                 </SettingsRow>
                 <SettingsRow label="Delete account" sub="Permanently delete your CredFlow account and all associated data" last>
-                  <button style={S.dangerBtn}>Delete account</button>
+                  <button onClick={handleDeleteAccount} disabled={deletingAccount} style={S.dangerBtn}>{deletingAccount ? 'Deleting...' : 'Delete account'}</button>
                 </SettingsRow>
               </SettingsSection>
             </div>
@@ -709,10 +648,12 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   )
 }
 
-function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
+function SettingsSection({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
     <div style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:12,overflow:'hidden'}}>
-      <div style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#ADADAD',padding:'10px 16px',borderBottom:'1px solid #E2E2DC',background:'#F2F2EF'}}>{title}</div>
+      {title ? (
+        <div style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#ADADAD',padding:'10px 16px',borderBottom:'1px solid #E2E2DC',background:'#F2F2EF'}}>{title}</div>
+      ) : null}
       {children}
     </div>
   )

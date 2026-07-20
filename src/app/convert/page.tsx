@@ -291,8 +291,8 @@ export default function ConvertPage() {
         <div style={{display:'flex',flex:1}}>
           {[
             {label:'Usage',    href:'/dashboard'},
-            {label:'Settings', href:'/dashboard'},
             {label:'Convert',  href:'/convert'},
+            {label:'Settings', href:'/dashboard'},
           ].map(item => (
             <a key={item.label} href={item.href} style={{
               padding:'0 14px',height:54,display:'flex',alignItems:'center',fontSize:12,fontWeight:500,
@@ -316,32 +316,6 @@ export default function ConvertPage() {
 
       {/* ── BODY ── */}
       <div style={{display:'flex',flex:1,overflow:'hidden',minHeight:0}}>
-
-        {/* Sidebar */}
-        <div style={{width:180,background:'#FFFFFF',borderRight:'1px solid #E2E2DC',padding:'12px 10px',display:'flex',flexDirection:'column',gap:3,flexShrink:0}}>
-          {[
-            {label:'Usage',    href:'/dashboard', icon:'📈', active:false},
-            {label:'Settings', href:'/dashboard', icon:'⚙️', active:false},
-            {label:'Convert',  href:'/convert',   icon:'📄', active:true},
-          ].map(item => (
-            <a key={item.label} href={item.href} style={{
-              display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,
-              fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'Inter,sans-serif',
-              textDecoration:'none',
-              color:   item.active ? '#1A1A1A' : '#6B6B6B',
-              background: item.active ? '#FFFBE8' : 'transparent',
-              border:  item.active ? '1px solid #FFF0A0' : '1px solid transparent',
-            }}>
-              <span style={{width:18,height:18,borderRadius:4,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,background:item.active?'#FFFBE8':'#F2F2EF',flexShrink:0}}>{item.icon}</span>
-              {item.label}
-            </a>
-          ))}
-          <div style={{marginTop:'auto'}}>
-            <div style={{fontSize:10,color:'#ADADAD',padding:'6px 10px',lineHeight:1.5}}>
-              {isPro ? 'Unlimited conversions' : `${remaining} of ${FREE_LIMIT} left this session`}
-            </div>
-          </div>
-        </div>
 
         {/* Main content */}
         <div style={{flex:1,overflowY:'auto',padding:22}}>
@@ -368,7 +342,7 @@ export default function ConvertPage() {
               {atLimit && (
                 <a href="https://credflow.vercel.app/#pricing" target="_blank" rel="noreferrer"
                   style={{fontSize:11,fontWeight:700,color:'#1A1A1A',background:'#FFCC00',border:'none',borderRadius:8,padding:'5px 12px',textDecoration:'none',flexShrink:0}}>
-                  Upgrade — $4/mo
+                  Upgrade — ₹299/mo
                 </a>
               )}
             </div>

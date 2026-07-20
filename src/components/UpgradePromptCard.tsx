@@ -49,7 +49,7 @@ export default function UpgradePromptCard() {
             padding: '2px 10px',
           }}
         >
-          $4 / month
+          ₹299 / month
         </span>
       </div>
 

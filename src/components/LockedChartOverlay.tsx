@@ -23,22 +23,7 @@ export default function LockedChartOverlay() {
         zIndex: 10,
       }}
     >
-      {/* Lock icon */}
-      <div
-        style={{
-          width: '40px',
-          height: '40px',
-          backgroundColor: '#F2F2EF',
-          border: '1px solid #E2E2DC',
-          borderRadius: '50%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '18px',
-        }}
-      >
-        🔒
-      </div>
+
 
       {/* Headline */}
       <p
@@ -91,7 +76,7 @@ export default function LockedChartOverlay() {
         onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
         onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
       >
-        Upgrade to Pro — $4/mo
+        Upgrade to Pro — ₹299/mo
       </a>
     </div>
   )
