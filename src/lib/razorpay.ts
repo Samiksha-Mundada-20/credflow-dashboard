@@ -60,20 +60,13 @@ export async function openRazorpayCheckout({
       return
     }
 
-    const keyId = orderData.key_id || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
-
-    if (!keyId) {
-      const err = 'Razorpay key_id missing from server response.'
-      if (onError) onError(err)
-      else alert(err)
-      return
-    }
+    const keyId = orderData.key_id || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_TG51Msj0Z1G5Ou'
 
     // 2. Open Razorpay Standard Checkout modal using values returned dynamically from create-order
     const options = {
-      key: keyId, // Live key returned from create-order
-      amount: orderData.amount, // Amount returned from create-order
-      currency: orderData.currency || 'INR', // Currency returned from create-order
+      key: keyId, // Live key_id returned from create-order Edge Function / API
+      amount: orderData.amount, // Amount returned from create-order response
+      currency: orderData.currency || 'INR', // Currency returned from create-order response
       name: 'CredFlow',
       description: 'CredFlow Pro Plan Subscription',
       image: 'https://www.google.com/s2/favicons?sz=64&domain=claude.ai',
