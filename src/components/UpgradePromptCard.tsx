@@ -1,5 +1,7 @@
 'use client'
 
+import { openRazorpayCheckout } from '@/lib/razorpay'
+
 // UpgradePromptCard.tsx
 // Card shown below the history chart for free users.
 // Surfaces the three most compelling Pro features.
@@ -10,7 +12,25 @@ const PRO_FEATURES = [
   { icon: '📬', label: 'Weekly email digest' },
 ]
 
-export default function UpgradePromptCard() {
+interface UpgradePromptCardProps {
+  userId?: string
+  userEmail?: string
+  onSuccess?: () => void
+}
+
+export default function UpgradePromptCard({ userId, userEmail, onSuccess }: UpgradePromptCardProps) {
+  const handleUpgrade = () => {
+    openRazorpayCheckout({
+      userId,
+      userEmail,
+      amount: 29900,
+      onSuccess: () => {
+        if (onSuccess) onSuccess()
+        else window.location.reload()
+      },
+    })
+  }
+
   return (
     <div
       style={{
@@ -74,12 +94,11 @@ export default function UpgradePromptCard() {
       </ul>
 
       {/* CTA button */}
-      <a
-        href="https://credflow.vercel.app/#pricing"
-        target="_blank"
-        rel="noreferrer"
+      <button
+        onClick={handleUpgrade}
         style={{
           display: 'block',
+          width: '100%',
           textAlign: 'center',
           padding: '10px 0',
           backgroundColor: '#FFCC00',
@@ -88,7 +107,8 @@ export default function UpgradePromptCard() {
           fontSize: '13px',
           fontWeight: 600,
           borderRadius: '6px',
-          textDecoration: 'none',
+          border: 'none',
+          cursor: 'pointer',
           letterSpacing: '0.01em',
           transition: 'opacity 0.15s',
         }}
@@ -96,7 +116,7 @@ export default function UpgradePromptCard() {
         onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
       >
         Upgrade to Pro
-      </a>
+      </button>
     </div>
   )
 }

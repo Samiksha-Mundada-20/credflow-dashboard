@@ -1,16 +1,29 @@
-'use client'
+import { openRazorpayCheckout } from '@/lib/razorpay'
 
-// LockedChartOverlay.tsx
-// Shown over the 7-day history chart for free users.
-// Blurs the chart and shows an upgrade prompt.
+interface LockedChartOverlayProps {
+  userId?: string
+  userEmail?: string
+  onSuccess?: () => void
+}
 
-export default function LockedChartOverlay() {
+export default function LockedChartOverlay({ userId, userEmail, onSuccess }: LockedChartOverlayProps) {
+  const handleUpgrade = () => {
+    openRazorpayCheckout({
+      userId,
+      userEmail,
+      amount: 29900,
+      onSuccess: () => {
+        if (onSuccess) onSuccess()
+        else window.location.reload()
+      },
+    })
+  }
+
   return (
     <div
       style={{
         position: 'absolute',
         inset: 0,
-        // Blur the chart beneath
         backdropFilter: 'blur(6px)',
         WebkitBackdropFilter: 'blur(6px)',
         backgroundColor: 'rgba(250, 250, 248, 0.75)',
@@ -23,8 +36,6 @@ export default function LockedChartOverlay() {
         zIndex: 10,
       }}
     >
-
-
       {/* Headline */}
       <p
         style={{
@@ -55,10 +66,8 @@ export default function LockedChartOverlay() {
       </p>
 
       {/* Upgrade CTA */}
-      <a
-        href="https://credflow.vercel.app/#pricing"
-        target="_blank"
-        rel="noreferrer"
+      <button
+        onClick={handleUpgrade}
         style={{
           display: 'inline-block',
           marginTop: '4px',
@@ -69,7 +78,8 @@ export default function LockedChartOverlay() {
           fontSize: '13px',
           fontWeight: 600,
           borderRadius: '6px',
-          textDecoration: 'none',
+          border: 'none',
+          cursor: 'pointer',
           letterSpacing: '0.01em',
           transition: 'opacity 0.15s',
         }}
@@ -77,7 +87,7 @@ export default function LockedChartOverlay() {
         onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
       >
         Upgrade to Pro — ₹299/mo
-      </a>
+      </button>
     </div>
   )
 }
