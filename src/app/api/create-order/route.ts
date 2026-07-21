@@ -3,7 +3,7 @@ import Razorpay from 'razorpay'
 
 export async function POST(req: Request) {
   try {
-    const keyId = process.env.RAZORPAY_KEY_ID
+    const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_TG51Msj0Z1G5Ou'
     const keySecret = process.env.RAZORPAY_KEY_SECRET
 
     if (!keyId || !keySecret) {
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
       order_id: order.id,
       amount: order.amount,
       currency: order.currency,
-      key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || keyId,
+      key_id: keyId,
     })
   } catch (error: any) {
     console.error('[Razorpay Create Order Error]:', error)

@@ -45,26 +45,35 @@ export async function openRazorpayCheckout({
       return
     }
 
-    // 1. Create order on backend
+    // 1. Create order on backend (or Supabase Edge Function)
     const res = await fetch('/api/create-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount }),
+      body: JSON.stringify({ amount, user_id: userId }),
     })
 
     const orderData = await res.json()
-    if (!res.ok || !orderData.success) {
+    if (!res.ok || (!orderData.success && !orderData.order_id)) {
       const err = orderData.error || 'Could not initiate Razorpay payment order.'
       if (onError) onError(err)
       else alert(err)
       return
     }
 
-    // 2. Open Razorpay Standard Checkout modal
+    const keyId = orderData.key_id || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
+
+    if (!keyId) {
+      const err = 'Razorpay key_id missing from server response.'
+      if (onError) onError(err)
+      else alert(err)
+      return
+    }
+
+    // 2. Open Razorpay Standard Checkout modal using values returned dynamically from create-order
     const options = {
-      key: orderData.key_id || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-      amount: orderData.amount,
-      currency: orderData.currency,
+      key: keyId, // Live key returned from create-order
+      amount: orderData.amount, // Amount returned from create-order
+      currency: orderData.currency || 'INR', // Currency returned from create-order
       name: 'CredFlow',
       description: 'CredFlow Pro Plan Subscription',
       image: 'https://www.google.com/s2/favicons?sz=64&domain=claude.ai',
@@ -73,7 +82,7 @@ export async function openRazorpayCheckout({
         email: userEmail || '',
       },
       theme: {
-        color: '#FFCC00',
+        color: '#4F46E5',
       },
       handler: async function (response: {
         razorpay_payment_id: string
