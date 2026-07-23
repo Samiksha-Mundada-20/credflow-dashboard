@@ -45,28 +45,44 @@ export async function openRazorpayCheckout({
       return
     }
 
-    // 1. Create order on backend (or Supabase Edge Function)
-    const res = await fetch('/api/create-order', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount, user_id: userId }),
-    })
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-    const orderData = await res.json()
-    if (!res.ok || (!orderData.success && !orderData.order_id)) {
-      const err = orderData.error || 'Could not initiate Razorpay payment order.'
+    if (!supabaseUrl || !supabaseAnonKey) {
+      const err = 'Supabase environment variables are missing.'
       if (onError) onError(err)
       else alert(err)
       return
     }
 
-    const keyId = orderData.key_id || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_TG51Msj0Z1G5Ou'
+    const headers = {
+      'apikey': supabaseAnonKey,
+      'Authorization': `Bearer ${supabaseAnonKey}`,
+      'Content-Type': 'application/json',
+    }
+
+    // 1. Create order on Supabase Edge Function
+    const res = await fetch(`${supabaseUrl}/functions/v1/create-order`, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({ user_id: userId }),
+    })
+
+    const orderData = await res.json().catch(() => ({}))
+    if (!res.ok || !orderData.order_id) {
+      const err = orderData.error || orderData.detail || 'Could not initiate Razorpay payment order via Edge Function.'
+      if (onError) onError(err)
+      else alert(err)
+      return
+    }
+
+    const keyId = orderData.key_id || 'rzp_live_TG51Msj0Z1G5Ou'
 
     // 2. Open Razorpay Standard Checkout modal using values returned dynamically from create-order
     const options = {
-      key: keyId, // Live key_id returned from create-order Edge Function / API
-      amount: orderData.amount, // Amount returned from create-order response
-      currency: orderData.currency || 'INR', // Currency returned from create-order response
+      key: keyId, // Key returned from create-order Edge Function
+      amount: orderData.amount, // Amount returned from create-order
+      currency: orderData.currency || 'INR', // Currency returned from create-order
       name: 'CredFlow',
       description: 'CredFlow Pro Plan Subscription',
       image: 'https://www.google.com/s2/favicons?sz=64&domain=claude.ai',
@@ -83,10 +99,10 @@ export async function openRazorpayCheckout({
         razorpay_signature: string
       }) {
         try {
-          // 3. Verify payment signature on backend
-          const verifyRes = await fetch('/api/verify-payment', {
+          // 3. Verify payment signature on Supabase Edge Function
+          const verifyRes = await fetch(`${supabaseUrl}/functions/v1/verify-payment`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: headers,
             body: JSON.stringify({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
@@ -95,12 +111,12 @@ export async function openRazorpayCheckout({
             }),
           })
 
-          const verifyData = await verifyRes.json()
-          if (verifyRes.ok && verifyData.success) {
+          const verifyData = await verifyRes.json().catch(() => ({}))
+          if (verifyRes.ok && verifyData.ok) {
             alert('🎉 Payment successful! Welcome to CredFlow Pro.')
             if (onSuccess) onSuccess()
           } else {
-            const err = verifyData.error || 'Payment verification failed.'
+            const err = verifyData.error || verifyData.detail || 'Payment verification failed.'
             if (onError) onError(err)
             else alert(err)
           }
