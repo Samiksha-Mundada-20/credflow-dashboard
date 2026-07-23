@@ -227,7 +227,16 @@ export default function DashboardPage() {
   }
 
   const initials = user?.email?.[0]?.toUpperCase() ?? 'U'
-  const isPro    = data?.settings?.plan === 'pro'
+  const isTrialActive = () => {
+    const settings = data?.settings
+    if (!settings || settings.plan !== 'trial') return false
+    if (!settings.trial_started_at) return false
+    const startedAt = new Date(settings.trial_started_at).getTime()
+    if (isNaN(startedAt)) return false
+    return (Date.now() - startedAt) < 7 * 24 * 60 * 60 * 1000
+  }
+
+  const isPro = data?.settings?.plan === 'pro' || isTrialActive()
 
   const chartDays: Array<{ label: string; h: number; today: boolean; val: number }> = (() => {
     const snapshotsByDay = new Map<string, UsageSnapshot>()
@@ -621,9 +630,15 @@ export default function DashboardPage() {
 
               <SettingsSection title="Account">
                 <SettingsRow label="Email address" sub={user?.email??'—'} last={false}>{null}</SettingsRow>
-                <SettingsRow label="Current plan" sub={isPro?'Pro · All features unlocked':'Free · Claude only · Up to 3 subscriptions'} last={true}>
+                <SettingsRow label="Current plan" sub={data?.settings?.plan === 'pro' ? 'Pro · All features unlocked' : (isTrialActive() ? 'Trial · All features unlocked' : 'Free · Claude only · Up to 3 subscriptions')} last={true}>
                   <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#F2F2EF',borderRadius:999,padding:'3px 9px',fontSize:11,fontWeight:600,color:'#6B6B6B'}}>
-                    {isPro?<span style={{color:'#8B5CF6'}}>Pro ✦</span>:<>Free <span onClick={handleUpgrade} style={{color:'#5170FF',cursor:'pointer',fontWeight:600,marginLeft:3}}>Upgrade</span></>}
+                    {data?.settings?.plan === 'pro' ? (
+                      <span style={{color:'#8B5CF6'}}>Pro ✦</span>
+                    ) : isTrialActive() ? (
+                      <span style={{color:'#D97706'}}>Trial ✦</span>
+                    ) : (
+                      <>Free <span onClick={handleUpgrade} style={{color:'#5170FF',cursor:'pointer',fontWeight:600,marginLeft:3}}>Upgrade</span></>
+                    )}
                   </span>
                 </SettingsRow>
               </SettingsSection>
