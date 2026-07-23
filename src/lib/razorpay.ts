@@ -76,7 +76,7 @@ export async function openRazorpayCheckout({
       return
     }
 
-    const keyId = orderData.key_id || 'rzp_live_TG51Msj0Z1G5Ou'
+    const keyId = orderData.key_id || 'rzp_live_TGwfzOmehJD3ED'
 
     // 2. Open Razorpay Standard Checkout modal using values returned dynamically from create-order
     const options = {
