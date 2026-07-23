@@ -34,7 +34,24 @@ export default function SignupPage() {
   // ─── Validation ─────────────────────────────────────────────────────────────
   function validate(): string | null {
     if (!email.trim()) return 'Email is required.'
-    if (!email.includes('@')) return 'Enter a valid email address.'
+    
+    // Strict email format validation
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+    if (!emailRegex.test(email.trim())) {
+      return 'Enter a valid email address.'
+    }
+
+    // Block disposable email domains to prevent spam users
+    const disposableDomains = [
+      'yopmail.com', 'mailinator.com', 'tempmail.com', 'guerrillamail.com', 
+      'sharklasers.com', 'dispostable.com', 'getairmail.com', 'burnermail.io', 
+      '10minutemail.com', 'temp-mail.org', 'trashmail.com', 'tempmail.net'
+    ]
+    const domain = email.trim().split('@')[1]?.toLowerCase()
+    if (disposableDomains.includes(domain)) {
+      return 'Please use a valid, non-disposable email address.'
+    }
+
     if (!password) return 'Password is required.'
     if (password.length < 8) return 'Password must be at least 8 characters.'
     if (password !== confirmPassword) return 'Passwords do not match.'

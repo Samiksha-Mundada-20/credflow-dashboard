@@ -27,7 +27,13 @@ export default function LoginPage() {
 
   function validate(): string | null {
     if (!email.trim()) return 'Email is required.'
-    if (!email.includes('@')) return 'Enter a valid email address.'
+    
+    // Strict email format validation
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+    if (!emailRegex.test(email.trim())) {
+      return 'Enter a valid email address.'
+    }
+
     if (!password) return 'Password is required.'
     return null
   }
