@@ -85,7 +85,7 @@ export async function openRazorpayCheckout({
       currency: orderData.currency || 'INR', // Currency returned from create-order
       name: 'CredFlow',
       description: 'CredFlow Pro Plan Subscription',
-      image: 'https://www.google.com/s2/favicons?sz=64&domain=claude.ai',
+      image: typeof window !== 'undefined' ? `${window.location.origin}/logo.png` : 'https://credflow-dashboard.vercel.app/logo.png',
       order_id: orderData.order_id,
       prefill: {
         email: userEmail || '',

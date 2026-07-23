@@ -17,7 +17,6 @@ import {
   type DashboardData,
   type UsageSnapshot,
 } from '@/lib/data'
-import { openRazorpayCheckout } from '@/lib/razorpay'
 import type { User } from '@supabase/supabase-js'
 
 type Tab       = 'usage' | 'settings'
@@ -224,14 +223,7 @@ export default function DashboardPage() {
   }
 
   const handleUpgrade = () => {
-    openRazorpayCheckout({
-      userId: user?.id,
-      userEmail: user?.email,
-      amount: 29900,
-      onSuccess: () => {
-        if (user) fetchData(user.id)
-      },
-    })
+    router.push(`/upgrade?uid=${user?.id || ''}&email=${encodeURIComponent(user?.email || '')}`)
   }
 
   const initials = user?.email?.[0]?.toUpperCase() ?? 'U'
