@@ -26,7 +26,8 @@ export type UsageSnapshot = {
 export type UserSettings = {
   id: string
   user_id: string
-  plan: 'free' | 'pro'
+  plan: 'free' | 'pro' | 'trial'
+  trial_started_at: string | null
   session_alert_threshold: number   // 0.0 – 1.0  default 0.80
   second_alert_enabled: boolean
   weekly_alert_threshold: number    // 0.0 – 1.0  default 0.75
