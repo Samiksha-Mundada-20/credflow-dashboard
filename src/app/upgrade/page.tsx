@@ -297,7 +297,7 @@ function UpgradeContent() {
               lineHeight: '1.6',
               margin: '0 0 28px 0'
             }}>
-              Your account has been upgraded to <strong>CredFlow Pro</strong>. Enjoy unrestricted 30-day history, ChatGPT tracking, and weekly digests.
+              Your account has been upgraded to <strong>CredFlow Pro</strong>. Enjoy 7-day complete usage history, real-time ChatGPT tracking, and unlimited markdown conversions.
             </p>
             <button
               onClick={() => router.push('/dashboard')}
@@ -399,9 +399,9 @@ function UpgradeContent() {
               <p style={{ fontSize: '12px', fontWeight: 700, color: '#ADADAD', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 12px 0' }}>Included Features</p>
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {[
-                  { icon: '•', text: '30-day complete usage history' },
-                  { icon: '•', text: 'Real-time ChatGPT quota tracking' },
-                  { icon: '•', text: 'Weekly email performance digests' }
+                  { icon: ' ', text: '7-day complete usage history' },
+                  { icon: ' ', text: 'Real-time ChatGPT quota tracking' },
+                  { icon: ' ', text: 'Unlimited markdown conversions' }
                 ].map((feat, idx) => (
                   <li key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#3A3A3A' }}>
                     <span style={{ fontSize: '16px', color: '#FFCC00' }}>{feat.icon}</span>
