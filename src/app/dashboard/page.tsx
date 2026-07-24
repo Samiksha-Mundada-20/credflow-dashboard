@@ -239,7 +239,7 @@ export default function DashboardPage() {
     return (Date.now() - startedAt) < 7 * 24 * 60 * 60 * 1000
   }
 
-  const isPro = data?.settings?.plan === 'pro' || isTrialActive()
+  const isPro = (data?.settings?.plan === 'pro' || isTrialActive()) && (typeof window !== 'undefined' ? localStorage.getItem('force_free_tier') !== 'true' : true)
 
   const chartDays: Array<{ label: string; h: number; today: boolean; val: number }> = (() => {
     const snapshotsByDay = new Map<string, UsageSnapshot>()

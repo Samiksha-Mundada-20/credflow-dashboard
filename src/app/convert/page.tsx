@@ -343,7 +343,7 @@ export default function ConvertPage() {
                   : `${conversions} of ${FREE_LIMIT} conversions used this session`}
               </span>
               {atLimit && !isEU && (
-                <a href="https://credflow.vercel.app/#pricing" target="_blank" rel="noreferrer"
+                <a href="/upgrade"
                   style={{fontSize:11,fontWeight:700,color:'#1A1A1A',background:'#FFCC00',border:'none',borderRadius:8,padding:'5px 12px',textDecoration:'none',flexShrink:0}}>
                   Upgrade — ₹299/mo
                 </a>
