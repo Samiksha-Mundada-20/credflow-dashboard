@@ -3,6 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getUser } from '@/lib/auth'
+import { supabase } from '@/lib/supabase'
 import { openRazorpayCheckout } from '@/lib/razorpay'
 import { isLikelyEU } from '@/lib/geo'
 
@@ -13,6 +14,7 @@ function UpgradeContent() {
   const [uid, setUid] = useState('')
   const [email, setEmail] = useState('')
   const [isEU, setIsEU] = useState(false)
+  const [isAlreadyPro, setIsAlreadyPro] = useState(false)
   const [loadingUser, setLoadingUser] = useState(true)
   const [paying, setPaying] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -25,25 +27,46 @@ function UpgradeContent() {
       const queryUid = searchParams.get('uid') || ''
       const queryEmail = searchParams.get('email') || ''
 
+      let resolvedUid = ''
+      let resolvedEmail = ''
+
       if (queryUid && queryEmail) {
+        resolvedUid = queryUid
+        resolvedEmail = queryEmail
         setUid(queryUid)
         setEmail(queryEmail)
-        setLoadingUser(false)
-        return
+      } else {
+        // 2. Fallback: Check existing Supabase session
+        try {
+          const currentUser = await getUser()
+          if (currentUser) {
+            resolvedUid = currentUser.id
+            resolvedEmail = currentUser.email || ''
+            setUid(resolvedUid)
+            setEmail(resolvedEmail)
+          }
+        } catch (err) {
+          console.error('Failed to get current user session:', err)
+        }
       }
 
-      // 2. Fallback: Check existing Supabase session
-      try {
-        const currentUser = await getUser()
-        if (currentUser) {
-          setUid(currentUser.id)
-          setEmail(currentUser.email || '')
+      // 3. Query user settings if user session exists
+      if (resolvedUid) {
+        try {
+          const { data } = await supabase
+            .from('user_settings')
+            .select('plan')
+            .eq('user_id', resolvedUid)
+            .single()
+          if (data?.plan === 'pro') {
+            setIsAlreadyPro(true)
+          }
+        } catch (err) {
+          console.error('Failed to query user settings plan:', err)
         }
-      } catch (err) {
-        console.error('Failed to get current user session:', err)
-      } finally {
-        setLoadingUser(false)
       }
+
+      setLoadingUser(false)
     }
 
     loadUser()
@@ -162,6 +185,58 @@ function UpgradeContent() {
               fontWeight: 500
             }}>
               Pro subscriptions are not currently available in the European Union (EU).
+            </p>
+            <button
+              onClick={() => router.push('/dashboard')}
+              style={{
+                width: '100%',
+                padding: '12px 0',
+                backgroundColor: '#4F46E5',
+                color: '#FFFFFF',
+                fontSize: '14px',
+                fontWeight: 600,
+                borderRadius: '8px',
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'opacity 0.15s'
+              }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+            >
+              Go to Dashboard
+            </button>
+          </div>
+        ) : isAlreadyPro ? (
+          <div>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              backgroundColor: '#F3EEFF',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 24px',
+              fontSize: '32px'
+            }}>
+              ✦
+            </div>
+            <h1 style={{
+              fontFamily: 'EB Garamond, Georgia, serif',
+              fontSize: '28px',
+              fontWeight: 500,
+              color: '#1A1A1A',
+              margin: '0 0 12px 0'
+            }}>
+              Already Pro
+            </h1>
+            <p style={{
+              color: '#6B6B6B',
+              fontSize: '15px',
+              lineHeight: '1.6',
+              margin: '0 0 28px 0'
+            }}>
+              Your account <strong>{email}</strong> is already subscribed to <strong>CredFlow Pro</strong>. Enjoy your unlimited access!
             </p>
             <button
               onClick={() => router.push('/dashboard')}
