@@ -65,7 +65,7 @@ export async function openRazorpayCheckout({
     const res = await fetch(`${supabaseUrl}/functions/v1/create-order`, {
       method: 'POST',
       headers: headers,
-      body: JSON.stringify({ user_id: userId }),
+      body: JSON.stringify({ user_id: userId, email: userEmail || null }),
     })
 
     const orderData = await res.json().catch(() => ({}))
@@ -114,12 +114,13 @@ export async function openRazorpayCheckout({
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
               user_id: userId,
+              email: userEmail || null,
             }),
           })
 
           const verifyData = await verifyRes.json().catch(() => ({}))
           if (verifyRes.ok && verifyData.ok) {
-            alert('🎉 Payment successful! Welcome to CredFlow Pro.')
+            alert('Payment successful! Welcome to CredFlow Pro.')
             if (onSuccess) onSuccess()
           } else {
             const err = verifyData.error || verifyData.detail || 'Payment verification failed.'
