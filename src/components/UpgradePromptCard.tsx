@@ -1,6 +1,6 @@
-'use client'
-
+import React, { useState, useEffect } from 'react'
 import { openRazorpayCheckout } from '@/lib/razorpay'
+import { isLikelyEU } from '@/lib/geo'
 
 // UpgradePromptCard.tsx
 // Card shown below the history chart for free users.
@@ -19,6 +19,12 @@ interface UpgradePromptCardProps {
 }
 
 export default function UpgradePromptCard({ userId, userEmail, onSuccess }: UpgradePromptCardProps) {
+  const [isEU, setIsEU] = useState(false)
+
+  useEffect(() => {
+    setIsEU(isLikelyEU())
+  }, [])
+
   const handleUpgrade = () => {
     openRazorpayCheckout({
       userId,
@@ -57,20 +63,22 @@ export default function UpgradePromptCard({ userId, userEmail, onSuccess }: Upgr
         >
           Unlock Pro
         </p>
-        <span
-          style={{
-            fontFamily: 'Inter, sans-serif',
-            fontSize: '12px',
-            fontWeight: 600,
-            color: '#6B6B6B',
-            backgroundColor: '#F2F2EF',
-            border: '1px solid #E2E2DC',
-            borderRadius: '20px',
-            padding: '2px 10px',
-          }}
-        >
-          ₹299 / month
-        </span>
+        {!isEU && (
+          <span
+            style={{
+              fontFamily: 'Inter, sans-serif',
+              fontSize: '12px',
+              fontWeight: 600,
+              color: '#6B6B6B',
+              backgroundColor: '#F2F2EF',
+              border: '1px solid #E2E2DC',
+              borderRadius: '20px',
+              padding: '2px 10px',
+            }}
+          >
+            ₹299 / month
+          </span>
+        )}
       </div>
 
       {/* Feature list */}
@@ -94,29 +102,42 @@ export default function UpgradePromptCard({ userId, userEmail, onSuccess }: Upgr
       </ul>
 
       {/* CTA button */}
-      <button
-        onClick={handleUpgrade}
-        style={{
-          display: 'block',
-          width: '100%',
+      {isEU ? (
+        <div style={{
           textAlign: 'center',
-          padding: '10px 0',
-          backgroundColor: '#FFCC00',
-          color: '#1A1A1A',
           fontFamily: 'Inter, sans-serif',
           fontSize: '13px',
           fontWeight: 600,
-          borderRadius: '6px',
-          border: 'none',
-          cursor: 'pointer',
-          letterSpacing: '0.01em',
-          transition: 'opacity 0.15s',
-        }}
-        onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
-        onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-      >
-        Upgrade to Pro
-      </button>
+          color: '#E83C3C',
+          padding: '4px 0'
+        }}>
+          Pro is not currently available in the EU.
+        </div>
+      ) : (
+        <button
+          onClick={handleUpgrade}
+          style={{
+            display: 'block',
+            width: '100%',
+            textAlign: 'center',
+            padding: '10px 0',
+            backgroundColor: '#FFCC00',
+            color: '#1A1A1A',
+            fontFamily: 'Inter, sans-serif',
+            fontSize: '13px',
+            fontWeight: 600,
+            borderRadius: '6px',
+            border: 'none',
+            cursor: 'pointer',
+            letterSpacing: '0.01em',
+            transition: 'opacity 0.15s',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
+          onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+        >
+          Upgrade to Pro
+        </button>
+      )}
     </div>
   )
 }

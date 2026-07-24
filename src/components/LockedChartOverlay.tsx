@@ -1,4 +1,6 @@
+import React, { useState, useEffect } from 'react'
 import { openRazorpayCheckout } from '@/lib/razorpay'
+import { isLikelyEU } from '@/lib/geo'
 
 interface LockedChartOverlayProps {
   userId?: string
@@ -7,6 +9,12 @@ interface LockedChartOverlayProps {
 }
 
 export default function LockedChartOverlay({ userId, userEmail, onSuccess }: LockedChartOverlayProps) {
+  const [isEU, setIsEU] = useState(false)
+
+  useEffect(() => {
+    setIsEU(isLikelyEU())
+  }, [])
+
   const handleUpgrade = () => {
     openRazorpayCheckout({
       userId,
@@ -66,28 +74,41 @@ export default function LockedChartOverlay({ userId, userEmail, onSuccess }: Loc
       </p>
 
       {/* Upgrade CTA */}
-      <button
-        onClick={handleUpgrade}
-        style={{
-          display: 'inline-block',
-          marginTop: '4px',
-          padding: '9px 22px',
-          backgroundColor: '#FFCC00',
-          color: '#1A1A1A',
+      {isEU ? (
+        <div style={{
           fontFamily: 'Inter, sans-serif',
           fontSize: '13px',
           fontWeight: 600,
-          borderRadius: '6px',
-          border: 'none',
-          cursor: 'pointer',
-          letterSpacing: '0.01em',
-          transition: 'opacity 0.15s',
-        }}
-        onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
-        onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-      >
-        Upgrade to Pro — ₹299/mo
-      </button>
+          color: '#E83C3C',
+          textAlign: 'center',
+          marginTop: '4px'
+        }}>
+          Pro is not currently available in the EU.
+        </div>
+      ) : (
+        <button
+          onClick={handleUpgrade}
+          style={{
+            display: 'inline-block',
+            marginTop: '4px',
+            padding: '9px 22px',
+            backgroundColor: '#FFCC00',
+            color: '#1A1A1A',
+            fontFamily: 'Inter, sans-serif',
+            fontSize: '13px',
+            fontWeight: 600,
+            borderRadius: '6px',
+            border: 'none',
+            cursor: 'pointer',
+            letterSpacing: '0.01em',
+            transition: 'opacity 0.15s',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
+          onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+        >
+          Upgrade to Pro — ₹299/mo
+        </button>
+      )}
     </div>
   )
 }

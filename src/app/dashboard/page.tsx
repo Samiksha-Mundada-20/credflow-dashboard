@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { getUser, signOut } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
+import { isLikelyEU } from '@/lib/geo'
 import {
   getDashboardData,
   saveSettings,
@@ -50,6 +51,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const [user,              setUser]              = useState<User | null>(null)
   const [authLoading,       setAuthLoading]       = useState(true)
+  const [isEU,              setIsEU]              = useState(false)
   const [data,              setData]              = useState<DashboardData | null>(null)
   const [dataLoading,       setDataLoading]       = useState(true)
   const [dataError,         setDataError]         = useState<string | null>(null)
@@ -72,6 +74,7 @@ export default function DashboardPage() {
   const [chartPlatform,     setChartPlatform]     = useState<'claude' | 'chatgpt'>('claude')
 
   useEffect(() => {
+    setIsEU(isLikelyEU())
     async function check() {
       const u = await getUser()
       if (!u) { router.replace('/login'); return }
@@ -348,7 +351,7 @@ export default function DashboardPage() {
             </svg>
           </button>
           <div style={{width:28,height:28,borderRadius:'50%',background:'#EEF0FF',border:'1.5px solid #5170FF',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#1800AD'}}>{initials}</div>
-          {!isPro && <button onClick={handleUpgrade} style={{background:'#FFCC00',color:'#1A1A1A',border:'none',borderRadius:8,padding:'5px 11px',fontFamily:'Inter,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer'}}>Upgrade ✦</button>}
+          {!isPro && !isEU && <button onClick={handleUpgrade} style={{background:'#FFCC00',color:'#1A1A1A',border:'none',borderRadius:8,padding:'5px 11px',fontFamily:'Inter,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer'}}>Upgrade ✦</button>}
           {isPro  && <span style={{fontSize:10,fontWeight:700,padding:'3px 9px',borderRadius:999,background:'#F3EEFF',color:'#8B5CF6'}}>Pro ✦</span>}
           <button onClick={handleSignOut} disabled={signingOut} style={{background:'transparent',border:'1px solid #E2E2DC',borderRadius:8,padding:'5px 11px',fontSize:11,color:'#6B6B6B',cursor:'pointer',opacity:signingOut?0.5:1,fontFamily:'Inter,sans-serif'}}>
             {signingOut ? 'Signing out…' : 'Sign out'}
@@ -562,14 +565,20 @@ export default function DashboardPage() {
                           }}>
                             <div style={{fontFamily:'var(--font-heading)',fontSize:16,fontWeight:500,color:'#1A1A1A',textAlign:'center'}}>History is a Pro feature</div>
                             <div style={{fontSize:12,color:'#6B6B6B',textAlign:'center',maxWidth:240,lineHeight:1.4}}>See your full 30-day trends, ChatGPT tracking and weekly digest.</div>
-                            <button onClick={handleUpgrade} style={{
-                              marginTop:4,padding:'8px 20px',
-                              background:'#FFCC00',color:'#1A1A1A',
-                              fontFamily:'Inter,sans-serif',fontSize:12,fontWeight:700,
-                              borderRadius:8,border:'none',cursor:'pointer',
-                            }}>
-                              Upgrade to Pro — ₹299/mo
-                            </button>
+                            {isEU ? (
+                              <div style={{ fontSize: 12, color: '#E83C3C', fontWeight: 600, marginTop: 8 }}>
+                                Pro is not currently available in the EU.
+                              </div>
+                            ) : (
+                              <button onClick={handleUpgrade} style={{
+                                marginTop:4,padding:'8px 20px',
+                                background:'#FFCC00',color:'#1A1A1A',
+                                fontFamily:'Inter,sans-serif',fontSize:12,fontWeight:700,
+                                borderRadius:8,border:'none',cursor:'pointer',
+                              }}>
+                                Upgrade to Pro — ₹299/mo
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -636,6 +645,8 @@ export default function DashboardPage() {
                       <span style={{color:'#8B5CF6'}}>Pro ✦</span>
                     ) : isTrialActive() ? (
                       <span style={{color:'#D97706'}}>Trial ✦</span>
+                    ) : isEU ? (
+                      <>Free</>
                     ) : (
                       <>Free <span onClick={handleUpgrade} style={{color:'#5170FF',cursor:'pointer',fontWeight:600,marginLeft:3}}>Upgrade</span></>
                     )}

@@ -117,6 +117,12 @@ export default function LoginPage() {
         Don&apos;t have an account?{' '}
         <Link href="/signup">Create one</Link>
       </p>
+
+      <div style={styles.legalFooter}>
+        <a href="https://credflow.vercel.app/pages/terms.html" target="_blank" rel="noopener noreferrer" style={styles.legalLink}>Terms</a>
+        <span style={styles.divider}>·</span>
+        <a href="https://credflow.vercel.app/pages/privacy.html" target="_blank" rel="noopener noreferrer" style={styles.legalLink}>Privacy</a>
+      </div>
     </AuthCard>
   )
 }
@@ -141,6 +147,22 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: '20px',
     textAlign: 'center',
     fontSize: '13px',
+    color: 'var(--text-secondary)',
+  },
+  legalFooter: {
+    marginTop: '24px',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '11px',
+    color: 'var(--text-secondary)',
+  },
+  legalLink: {
+    color: 'inherit',
+    textDecoration: 'underline',
+  },
+  divider: {
     color: 'var(--text-secondary)',
   },
 }

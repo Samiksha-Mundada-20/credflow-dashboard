@@ -146,9 +146,9 @@ export default function SignupPage() {
         />
         <span style={styles.consentText}>
           I agree to the{' '}
-          <Link href="/privacy">Privacy Policy</Link>
+          <a href="https://credflow.vercel.app/pages/privacy.html" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline', color: 'inherit' }}>Privacy Policy</a>
           {' '}and{' '}
-          <Link href="/terms">Terms of Service</Link>.
+          <a href="https://credflow.vercel.app/pages/terms.html" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline', color: 'inherit' }}>Terms of Service</a>.
           I understand CredFlow only reads usage percentage numbers — never message content.
         </span>
       </label>
@@ -166,6 +166,12 @@ export default function SignupPage() {
         Already have an account?{' '}
         <Link href="/login">Sign in</Link>
       </p>
+
+      <div style={styles.legalFooter}>
+        <a href="https://credflow.vercel.app/pages/terms.html" target="_blank" rel="noopener noreferrer" style={styles.legalLink}>Terms</a>
+        <span style={styles.divider}>·</span>
+        <a href="https://credflow.vercel.app/pages/privacy.html" target="_blank" rel="noopener noreferrer" style={styles.legalLink}>Privacy</a>
+      </div>
     </AuthCard>
   )
 }
@@ -203,6 +209,22 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: '20px',
     textAlign: 'center',
     fontSize: '13px',
+    color: 'var(--text-secondary)',
+  },
+  legalFooter: {
+    marginTop: '24px',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '11px',
+    color: 'var(--text-secondary)',
+  },
+  legalLink: {
+    color: 'inherit',
+    textDecoration: 'underline',
+  },
+  divider: {
     color: 'var(--text-secondary)',
   },
 }

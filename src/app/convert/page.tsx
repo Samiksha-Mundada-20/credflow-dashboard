@@ -12,6 +12,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getUser, signOut } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
+import { isLikelyEU } from '@/lib/geo'
 import type { User } from '@supabase/supabase-js'
 
 const SUPABASE_URL      = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -62,6 +63,7 @@ export default function ConvertPage() {
   const [user,         setUser]         = useState<User | null>(null)
   const [authLoading,  setAuthLoading]  = useState(true)
   const [isPro,        setIsPro]        = useState(false)
+  const [isEU,         setIsEU]         = useState(false)
   const [signingOut,   setSigningOut]   = useState(false)
 
   // Converter state
@@ -78,6 +80,7 @@ export default function ConvertPage() {
 
   // ── Auth check ────────────────────────────────────────────────────────────
   useEffect(() => {
+    setIsEU(isLikelyEU())
     async function check() {
       const u = await getUser()
       if (!u) { router.replace('/login'); return }
@@ -336,10 +339,10 @@ export default function ConvertPage() {
             }}>
               <span style={{fontSize:12, color: atLimit ? '#E83C3C' : '#6B6B6B'}}>
                 {atLimit
-                  ? 'Session limit reached. Upgrade to Pro for unlimited conversions.'
+                  ? (isEU ? 'Session limit reached. Pro upgrades are not currently available in the EU.' : 'Session limit reached. Upgrade to Pro for unlimited conversions.')
                   : `${conversions} of ${FREE_LIMIT} conversions used this session`}
               </span>
-              {atLimit && (
+              {atLimit && !isEU && (
                 <a href="https://credflow.vercel.app/#pricing" target="_blank" rel="noreferrer"
                   style={{fontSize:11,fontWeight:700,color:'#1A1A1A',background:'#FFCC00',border:'none',borderRadius:8,padding:'5px 12px',textDecoration:'none',flexShrink:0}}>
                   Upgrade — ₹299/mo
