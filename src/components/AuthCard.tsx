@@ -15,7 +15,6 @@ export default function AuthCard({ title, subtitle, children }: AuthCardProps) {
     <div style={styles.page}>
       {/* Logo + wordmark */}
       <div style={styles.logo}>
-        <span style={styles.logoMark}>✦</span>
         <span style={styles.logoText}>CredFlow</span>
       </div>
 

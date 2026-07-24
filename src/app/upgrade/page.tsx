@@ -164,9 +164,12 @@ function UpgradeContent() {
               alignItems: 'center',
               justifyContent: 'center',
               margin: '0 auto 24px',
-              fontSize: '32px'
+              fontSize: '18px',
+              fontWeight: 700,
+              color: '#E83C3C',
+              border: '2px solid #FCA5A5'
             }}>
-              🇪🇺
+              EU
             </div>
             <h1 style={{
               fontFamily: 'EB Garamond, Georgia, serif',
@@ -217,9 +220,12 @@ function UpgradeContent() {
               alignItems: 'center',
               justifyContent: 'center',
               margin: '0 auto 24px',
-              fontSize: '32px'
+              fontSize: '15px',
+              fontWeight: 700,
+              color: '#8B5CF6',
+              border: '2px solid #D8B4FE'
             }}>
-              ✦
+              Pro
             </div>
             <h1 style={{
               fontFamily: 'EB Garamond, Georgia, serif',
@@ -269,9 +275,12 @@ function UpgradeContent() {
               alignItems: 'center',
               justifyContent: 'center',
               margin: '0 auto 24px',
-              fontSize: '32px'
+              fontSize: '22px',
+              fontWeight: 700,
+              color: '#10B981',
+              border: '2px solid #6EE7B7'
             }}>
-              🎉
+              ✔
             </div>
             <h1 style={{
               fontFamily: 'EB Garamond, Georgia, serif',
@@ -390,12 +399,12 @@ function UpgradeContent() {
               <p style={{ fontSize: '12px', fontWeight: 700, color: '#ADADAD', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 12px 0' }}>Included Features</p>
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {[
-                  { icon: '📊', text: '30-day complete usage history' },
-                  { icon: '🤖', text: 'Real-time ChatGPT quota tracking' },
-                  { icon: '📬', text: 'Weekly email performance digests' }
+                  { icon: '•', text: '30-day complete usage history' },
+                  { icon: '•', text: 'Real-time ChatGPT quota tracking' },
+                  { icon: '•', text: 'Weekly email performance digests' }
                 ].map((feat, idx) => (
                   <li key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#3A3A3A' }}>
-                    <span style={{ fontSize: '16px' }}>{feat.icon}</span>
+                    <span style={{ fontSize: '16px', color: '#FFCC00' }}>{feat.icon}</span>
                     <span>{feat.text}</span>
                   </li>
                 ))}

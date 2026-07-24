@@ -76,7 +76,13 @@ export async function openRazorpayCheckout({
       return
     }
 
-    const keyId = orderData.key_id || 'rzp_live_TGwfzOmehJD3ED'
+    const keyId = orderData.key_id
+    if (!keyId) {
+      const err = 'Payment gateway configuration is missing. Please check your system settings or contact support.'
+      if (onError) onError(err)
+      else alert(err)
+      return
+    }
 
     // 2. Open Razorpay Standard Checkout modal using values returned dynamically from create-order
     const options = {

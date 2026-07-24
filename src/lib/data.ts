@@ -218,3 +218,41 @@ export function pct(utilization: number): string {
 export function pctInt(utilization: number): number {
   return Math.round(Math.min(utilization, 1.0) * 100)
 }
+
+// Fetch number of markdown conversions recorded for this user in the last 24 hours
+export async function getDailyConversions(userId: string): Promise<number> {
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('usage_snapshots')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('platform', 'convert')
+    .gte('captured_at', oneDayAgo)
+
+  if (error) {
+    console.error('[Database getDailyConversions Error]:', error.message)
+    return 0
+  }
+  return data?.length ?? 0
+}
+
+// Log a successful file conversion for this user to enforce daily limits
+export async function recordConversion(userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('usage_snapshots')
+    .insert({
+      user_id: userId,
+      platform: 'convert',
+      session_utilization: 1.0,
+      weekly_utilization: 1.0,
+      session_reset_at: new Date().toISOString(),
+      weekly_reset_at: new Date().toISOString(),
+      captured_at: new Date().toISOString(),
+      source_version: '1.0'
+    })
+
+  if (error) {
+    console.error('[Database recordConversion Error]:', error.message)
+  }
+}
+

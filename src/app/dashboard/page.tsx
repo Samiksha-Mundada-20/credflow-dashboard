@@ -351,8 +351,8 @@ export default function DashboardPage() {
             </svg>
           </button>
           <div style={{width:28,height:28,borderRadius:'50%',background:'#EEF0FF',border:'1.5px solid #5170FF',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#1800AD'}}>{initials}</div>
-          {!isPro && !isEU && <button onClick={handleUpgrade} style={{background:'#FFCC00',color:'#1A1A1A',border:'none',borderRadius:8,padding:'5px 11px',fontFamily:'Inter,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer'}}>Upgrade ✦</button>}
-          {isPro  && <span style={{fontSize:10,fontWeight:700,padding:'3px 9px',borderRadius:999,background:'#F3EEFF',color:'#8B5CF6'}}>Pro ✦</span>}
+          {!isPro && !isEU && <button onClick={handleUpgrade} style={{background:'#FFCC00',color:'#1A1A1A',border:'none',borderRadius:8,padding:'5px 11px',fontFamily:'Inter,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer'}}>Upgrade</button>}
+          {isPro  && <span style={{fontSize:10,fontWeight:700,padding:'3px 9px',borderRadius:999,background:'#F3EEFF',color:'#8B5CF6'}}>Pro</span>}
           <button onClick={handleSignOut} disabled={signingOut} style={{background:'transparent',border:'1px solid #E2E2DC',borderRadius:8,padding:'5px 11px',fontSize:11,color:'#6B6B6B',cursor:'pointer',opacity:signingOut?0.5:1,fontFamily:'Inter,sans-serif'}}>
             {signingOut ? 'Signing out…' : 'Sign out'}
           </button>
@@ -430,7 +430,6 @@ export default function DashboardPage() {
 
               {!dataLoading && !snap && (
                 <div style={{background:'#FFFFFF',border:'1.5px dashed #CBCBC4',borderRadius:12,padding:'32px 24px',textAlign:'center'}}>
-                  <div style={{fontSize:28,marginBottom:10}}>✦</div>
                   <div style={{fontFamily:'var(--font-heading)',fontSize:18,fontWeight:400,color:'#1A1A1A',marginBottom:6}}>No usage data yet</div>
                   <div style={{fontSize:12,color:'#6B6B6B',lineHeight:1.7,maxWidth:320,margin:'0 auto'}}>Install the CredFlow extension and open Claude.ai to start tracking. Data will appear here automatically after your first session.</div>
                 </div>
@@ -642,9 +641,9 @@ export default function DashboardPage() {
                 <SettingsRow label="Current plan" sub={data?.settings?.plan === 'pro' ? 'Pro · All features unlocked' : (isTrialActive() ? 'Trial · All features unlocked' : 'Free · Claude only · Up to 3 subscriptions')} last={true}>
                   <span style={{display:'inline-flex',alignItems:'center',gap:4,background:'#F2F2EF',borderRadius:999,padding:'3px 9px',fontSize:11,fontWeight:600,color:'#6B6B6B'}}>
                     {data?.settings?.plan === 'pro' ? (
-                      <span style={{color:'#8B5CF6'}}>Pro ✦</span>
+                      <span style={{color:'#8B5CF6'}}>Pro</span>
                     ) : isTrialActive() ? (
-                      <span style={{color:'#D97706'}}>Trial ✦</span>
+                      <span style={{color:'#D97706'}}>Trial</span>
                     ) : isEU ? (
                       <>Free</>
                     ) : (

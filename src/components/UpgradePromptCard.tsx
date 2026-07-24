@@ -7,9 +7,9 @@ import { isLikelyEU } from '@/lib/geo'
 // Surfaces the three most compelling Pro features.
 
 const PRO_FEATURES = [
-  { icon: '📊', label: '30-day usage history' },
-  { icon: '🤖', label: 'ChatGPT tracking' },
-  { icon: '📬', label: 'Weekly email digest' },
+  { icon: '•', label: '30-day usage history' },
+  { icon: '•', label: 'ChatGPT tracking' },
+  { icon: '•', label: 'Weekly email digest' },
 ]
 
 interface UpgradePromptCardProps {
@@ -95,7 +95,7 @@ export default function UpgradePromptCard({ userId, userEmail, onSuccess }: Upgr
               color: '#1A1A1A',
             }}
           >
-            <span style={{ fontSize: '14px' }}>{f.icon}</span>
+            <span style={{ fontSize: '14px', color: '#FFCC00' }}>{f.icon}</span>
             {f.label}
           </li>
         ))}

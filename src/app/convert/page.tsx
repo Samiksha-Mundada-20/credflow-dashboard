@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation'
 import { getUser, signOut } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { isLikelyEU } from '@/lib/geo'
+import { getDailyConversions, recordConversion } from '@/lib/data'
 import type { User } from '@supabase/supabase-js'
 
 const SUPABASE_URL      = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -92,7 +93,13 @@ export default function ConvertPage() {
         .select('plan')
         .eq('user_id', u.id)
         .single()
-      setIsPro(data?.plan === 'pro')
+      const planPro = data?.plan === 'pro'
+      setIsPro(planPro)
+
+      if (!planPro) {
+        const count = await getDailyConversions(u.id)
+        setConversions(count)
+      }
       setAuthLoading(false)
     }
     check()
@@ -169,7 +176,7 @@ export default function ConvertPage() {
     // Free tier limit check — batch must fit in remaining allowance
     if (!isPro && conversions + files.length > FREE_LIMIT) {
       setState('error')
-      setErrorMsg(`Not enough conversions left this session. You have ${FREE_LIMIT - conversions} remaining, but selected ${files.length} file${files.length !== 1 ? 's' : ''}.`)
+      setErrorMsg(`Not enough conversions left today. You have ${FREE_LIMIT - conversions} remaining, but selected ${files.length} file${files.length !== 1 ? 's' : ''}.`)
       return
     }
 
@@ -201,7 +208,11 @@ export default function ConvertPage() {
 
       setResults(json.results ?? [])
       setState('done')
-      if (!isPro) setConversions(c => c + files.length)
+      if (!isPro) {
+        await Promise.all(files.map(() => recordConversion(user.id)))
+        const freshCount = await getDailyConversions(user.id)
+        setConversions(freshCount)
+      }
 
     } catch (err) {
       setState('error')
@@ -309,8 +320,8 @@ export default function ConvertPage() {
         </div>
         <div style={{display:'flex',alignItems:'center',gap:9}}>
           <div style={{width:28,height:28,borderRadius:'50%',background:'#EEF0FF',border:'1.5px solid #5170FF',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#1800AD'}}>{initials}</div>
-          {isPro  && <span style={{fontSize:10,fontWeight:700,padding:'3px 9px',borderRadius:999,background:'#F3EEFF',color:'#8B5CF6'}}>Pro ✦</span>}
-          {!isPro && <button style={{background:'#FFCC00',color:'#1A1A1A',border:'none',borderRadius:8,padding:'5px 11px',fontFamily:'Inter,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer'}}>Upgrade ✦</button>}
+          {isPro  && <span style={{fontSize:10,fontWeight:700,padding:'3px 9px',borderRadius:999,background:'#F3EEFF',color:'#8B5CF6'}}>Pro</span>}
+          {!isPro && <button style={{background:'#FFCC00',color:'#1A1A1A',border:'none',borderRadius:8,padding:'5px 11px',fontFamily:'Inter,sans-serif',fontSize:11,fontWeight:700,cursor:'pointer'}}>Upgrade</button>}
           <button onClick={handleSignOut} disabled={signingOut} style={{background:'transparent',border:'1px solid #E2E2DC',borderRadius:8,padding:'5px 11px',fontSize:11,color:'#6B6B6B',cursor:'pointer',fontFamily:'Inter,sans-serif'}}>
             {signingOut ? 'Signing out…' : 'Sign out'}
           </button>
@@ -339,8 +350,8 @@ export default function ConvertPage() {
             }}>
               <span style={{fontSize:12, color: atLimit ? '#E83C3C' : '#6B6B6B'}}>
                 {atLimit
-                  ? (isEU ? 'Session limit reached. Pro upgrades are not currently available in the EU.' : 'Session limit reached. Upgrade to Pro for unlimited conversions.')
-                  : `${conversions} of ${FREE_LIMIT} conversions used this session`}
+                  ? (isEU ? 'Daily limit reached. Pro upgrades are not currently available in the EU.' : 'Daily limit reached. Upgrade to Pro for unlimited conversions.')
+                  : `${conversions} of ${FREE_LIMIT} conversions used today`}
               </span>
               {atLimit && !isEU && (
                 <a href="/upgrade"
@@ -445,20 +456,20 @@ export default function ConvertPage() {
                     <span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'white',borderRadius:'50%',display:'inline-block',animation:'spin .7s linear infinite'}}/>
                     Converting…
                   </>
-                ) : state === 'done' ? '↺ Convert another batch' : `Convert ${files.length > 1 ? `${files.length} files` : 'to Markdown'}`}
+                ) : state === 'done' ? 'Convert another batch' : `Convert ${files.length > 1 ? `${files.length} files` : 'to Markdown'}`}
               </button>
 
               {/* Combined action buttons — only shown after successful conversion */}
               {state === 'done' && successCount > 0 && (
                 <div style={{display:'flex',gap:8}}>
                   <button onClick={handleDownloadAll} style={btnStyle('#5170FF','white')}>
-                    ↓ Download all
+                    Download all
                   </button>
                   <button onClick={handleCopyAll} style={btnStyle(copiedIndex==='all'?'#2DC07A':'#F2F2EF', copiedIndex==='all'?'white':'#1A1A1A')}>
-                    {copiedIndex==='all' ? '✔ Copied' : '⎘ Copy all'}
+                    {copiedIndex==='all' ? 'Copied' : 'Copy all'}
                   </button>
                   <button onClick={handleOpenInClaude} style={btnStyle('#F2F2EF','#1A1A1A')}>
-                    ✦ Open in Claude
+                    Open in Claude
                   </button>
                 </div>
               )}
@@ -468,12 +479,12 @@ export default function ConvertPage() {
                 <div style={{background:'#FFFFFF',border:'1px solid #E2E2DC',borderRadius:10,padding:14}}>
                   <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.8px',color:'#ADADAD',marginBottom:10}}>How it works</div>
                   {[
-                    ['📂','Drop up to 5 files','PDF, DOCX, PPTX, TXT, or code'],
-                    ['⚡','Instant conversion','Runs on Supabase Edge, no data stored'],
-                    ['✦','Open in Claude','Markdown copied to clipboard automatically'],
+                    ['•','Drop up to 5 files','PDF, DOCX, PPTX, TXT, or code'],
+                    ['•','Instant conversion','Runs on Supabase Edge, no data stored'],
+                    ['•','Open in Claude','Markdown copied to clipboard automatically'],
                   ].map(([icon,title,sub]) => (
                     <div key={title as string} style={{display:'flex',gap:10,alignItems:'flex-start',marginBottom:10}}>
-                      <span style={{fontSize:16,flexShrink:0}}>{icon}</span>
+                      <span style={{fontSize:16,flexShrink:0,color:'#FFCC00'}}>{icon}</span>
                       <div>
                         <div style={{fontSize:12,fontWeight:600,color:'#1A1A1A'}}>{title}</div>
                         <div style={{fontSize:11,color:'#6B6B6B'}}>{sub}</div>
