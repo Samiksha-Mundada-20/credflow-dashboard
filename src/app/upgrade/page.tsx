@@ -72,32 +72,9 @@ function UpgradeContent() {
     loadUser()
   }, [searchParams])
 
-  const handleUpgrade = () => {
-    if (!uid) {
-      router.push(`/login?redirectTo=${encodeURIComponent('/upgrade')}`)
-      return
-    }
-
-    setErrorMsg('')
-    setPaying(true)
-
-    openRazorpayCheckout({
-      userId: uid,
-      userEmail: email,
-      amount: 29900,
-      onSuccess: () => {
-        setPaying(false)
-        setSuccess(true)
-      },
-      onCancel: () => {
-        setPaying(false)
-      },
-      onError: (msg) => {
-        setPaying(false)
-        setErrorMsg(msg)
-      },
-    })
-  }
+    const handleUpgrade = () => {
+     setErrorMsg('Pro is launching soon. Enjoy the free trial!')
+   }
 
   if (loadingUser) {
     return (
